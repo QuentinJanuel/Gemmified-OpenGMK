@@ -2,8 +2,8 @@ use crate::{
     asset::Sprite,
     gml,
     render::{
-        atlas::{AtlasBuilder, AtlasRef},
         Renderer,
+        atlas::{AtlasBuilder, AtlasRef},
     },
 };
 use encoding_rs::Encoding;

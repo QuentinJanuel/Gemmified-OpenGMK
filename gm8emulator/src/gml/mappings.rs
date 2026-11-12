@@ -1419,16 +1419,16 @@ pub const FUNCTIONS: phf::OrderedMap<&'static str, Function> = phf_ordered_map! 
     "parameter_count" => Function::Constant(Game::parameter_count),
     "parameter_string" => Function::Constant(Game::parameter_string),
     "environment_get_variable" => Function::Volatile(Game::environment_get_variable),
-    "registry_write_string" => Function::Volatile(Game::registry_write_string),
-    "registry_write_real" => Function::Volatile(Game::registry_write_real),
-    "registry_read_string" => Function::Volatile(Game::registry_read_string),
-    "registry_read_real" => Function::Volatile(Game::registry_read_real),
-    "registry_exists" => Function::Volatile(Game::registry_exists),
-    "registry_write_string_ext" => Function::Volatile(Game::registry_write_string_ext),
-    "registry_write_real_ext" => Function::Volatile(Game::registry_write_real_ext),
-    "registry_read_string_ext" => Function::Volatile(Game::registry_read_string_ext),
-    "registry_read_real_ext" => Function::Volatile(Game::registry_read_real_ext),
-    "registry_exists_ext" => Function::Volatile(Game::registry_exists_ext),
+    "registry_write_string" => Function::Engine(Game::registry_write_string),
+    "registry_write_real" => Function::Engine(Game::registry_write_real),
+    "registry_read_string" => Function::Engine(Game::registry_read_string),
+    "registry_read_real" => Function::Engine(Game::registry_read_real),
+    "registry_exists" => Function::Engine(Game::registry_exists),
+    "registry_write_string_ext" => Function::Engine(Game::registry_write_string_ext),
+    "registry_write_real_ext" => Function::Engine(Game::registry_write_real_ext),
+    "registry_read_string_ext" => Function::Engine(Game::registry_read_string_ext),
+    "registry_read_real_ext" => Function::Engine(Game::registry_read_real_ext),
+    "registry_exists_ext" => Function::Engine(Game::registry_exists_ext),
     "registry_set_root" => Function::Engine(Game::registry_set_root),
     "ini_open" => Function::Engine(Game::ini_open),
     "ini_close" => Function::Engine(Game::ini_close),
@@ -2138,9 +2138,48 @@ pub const FUNCTIONS: phf::OrderedMap<&'static str, Function> = phf_ordered_map! 
     "d3d_model_floor" => Function::Engine(Game::d3d_model_floor),
 };
 
+/// The GML name of an engine function, given a pointer to it -- the inverse of the table above.
+///
+/// Compares the *function's* address, as `FunctionPtr`'s `Serialize` does -- not
+/// `std::ptr::from_ref(&func.0)`, which is the address of the variable holding the pointer rather
+/// than the pointer itself and so never equal to anything in the table.
 #[inline(always)]
-pub fn find_function_by_address<T>(func: &gml::FunctionPtr<T>) -> Option<(usize, &str)> {
-    FUNCTIONS.entries().enumerate()
-        .find(|(_, (_, &v))| v.addr() == std::ptr::from_ref(&func.0) as *const ())
-        .map(|(i, (&k, _))| (i, k))
+pub fn find_function_by_address<T: gml::FunctionTryFromEnum>(func: &gml::FunctionPtr<T>) -> Option<(usize, &str)> {
+    FUNCTIONS.entries().enumerate().find(|(_, (_, &v))| v.addr() == func.0.addr()).map(|(i, (&k, _))| (i, k))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    /// `gm8exe::builtin_names` is a copy of these tables, made because that crate must not depend on
+    /// the engine. gm8exe's game code summary decides "built-in or the game's own" from the
+    /// copy, so a copy that drifted would quietly misreport a new engine variable as a game one.
+    #[test]
+    fn gm8exe_builtin_names_match() {
+        let variables: BTreeSet<&str> = super::INSTANCE_VARIABLES.iter().map(|(name, _)| *name).collect();
+        let copied: BTreeSet<&str> = gm8exe::builtin_names::BUILTIN_VARIABLES.iter().copied().collect();
+        assert_eq!(variables, copied, "regenerate gm8exe/src/builtin_names.rs");
+
+        let constants: BTreeSet<&str> = super::CONSTANTS.keys().copied().collect();
+        let copied: BTreeSet<&str> = gm8exe::builtin_names::CONSTANTS.iter().copied().collect();
+        assert_eq!(constants, copied, "regenerate gm8exe/src/builtin_names.rs");
+    }
+
+    /// Round-trips a function through the table and back to its name. Worth a test because the
+    /// previous version of `find_function_by_address` compiled, ran, and answered `None` every
+    /// time -- a wrong answer no caller checked, since both of its callers fall back to
+    /// `?unknown?`. One function of each `Function` variant, so a variant whose `addr()` stops
+    /// agreeing with the table is caught here rather than in a log line someone reads later.
+    #[test]
+    fn functions_are_found_by_address() {
+        use crate::{game::Game, gml};
+        // Runtime (takes a Context), Engine (takes the Game), Pure (takes only its arguments).
+        let context: gml::ContextFunction = gml::FunctionPtr(Game::draw_self);
+        assert_eq!(super::find_function_by_address(&context).map(|(_, n)| n), Some("draw_self"));
+        let state: gml::StateFunction = gml::FunctionPtr(Game::file_bin_read_byte);
+        assert_eq!(super::find_function_by_address(&state).map(|(_, n)| n), Some("file_bin_read_byte"));
+        let routine: gml::RoutineFunction = gml::FunctionPtr(Game::string_length);
+        assert_eq!(super::find_function_by_address(&routine).map(|(_, n)| n), Some("string_length"));
+    }
 }

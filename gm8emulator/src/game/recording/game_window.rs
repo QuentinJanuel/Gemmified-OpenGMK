@@ -1,11 +1,11 @@
 use crate::{
     game::{
+        Renderer,
         recording::{
             instance_report::InstanceReport,
             set_mouse_dialog::{MouseDialogResult, SetMouseDialog},
             window::{EmulatorContext, Window},
         },
-        Renderer,
     },
     imgui_utils::*,
 };
@@ -52,13 +52,7 @@ impl Window for GameWindow {
 impl GameWindow {
     pub fn new() -> GameWindow {
         GameWindow {
-            callback_data: GameViewData {
-                w: 0,
-                h: 0,
-                x: 0,
-                y: 0,
-                renderer: std::ptr::null_mut(),
-            },
+            callback_data: GameViewData { w: 0, h: 0, x: 0, y: 0, renderer: std::ptr::null_mut() },
             context_menu_options: None,
             mouse_dialog: SetMouseDialog::new(),
             set_screencover_focus: true,
@@ -120,10 +114,10 @@ impl GameWindow {
         info.frame
             .window(format!("{}###{}", info.game.get_window_title(), self.name()))
             .position([f32::from(info.config.ui_width) - w as f32 - 8.0, 8.0], imgui::Condition::FirstUseEver)
-            .size([
-                    w as f32 + (2.0 * info.win_border_size),
-                    h as f32 + info.win_border_size + info.win_frame_height
-                ], imgui::Condition::Always)
+            .size(
+                [w as f32 + (2.0 * info.win_border_size), h as f32 + info.win_border_size + info.win_frame_height],
+                imgui::Condition::Always,
+            )
             .resizable(false)
             .menu_bar(false)
             .build(|| {
@@ -194,8 +188,10 @@ impl GameWindow {
         while let Some(handle) = iter.next(&info.game.room.instance_list) {
             let instance = info.game.room.instance_list.get(handle);
             instance.update_bbox(info.game.get_instance_mask_sprite(handle));
-            if x >= instance.bbox_left.get() && x <= instance.bbox_right.get()
-              && y >= instance.bbox_top.get() && y <= instance.bbox_bottom.get()
+            if x >= instance.bbox_left.get()
+                && x <= instance.bbox_right.get()
+                && y >= instance.bbox_top.get()
+                && y <= instance.bbox_bottom.get()
             {
                 use crate::game::GetAsset;
                 let id = instance.id.get();

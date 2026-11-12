@@ -1,12 +1,8 @@
 use crate::types::ArraySerde;
 use serde::{Deserialize, Serialize};
 use std::{
-    fmt::{
-        Display,
-        Error,
-        Formatter,
-    },
     convert::TryFrom,
+    fmt::{Display, Error, Formatter},
 };
 
 const KEY_MAX: usize = u8::max_value() as usize + 1;
@@ -684,330 +680,331 @@ impl TryFrom<u8> for Button {
     }
 }
 
-impl TryFrom<ramen::input::Key> for Button {
+impl TryFrom<crate::window::input::Key> for Button {
     type Error = ();
 
-    fn try_from(key: ramen::input::Key) -> Result<Self, Self::Error> {
+    fn try_from(key: crate::window::input::Key) -> Result<Self, Self::Error> {
         match key {
-            ramen::input::Key::Attn => Ok(Self::Attn),
-            ramen::input::Key::LeftAlt => Ok(Self::LeftAlt),
-            ramen::input::Key::RightAlt => Ok(Self::RightAlt),
-            ramen::input::Key::Applications => Ok(Self::Applications),
-            ramen::input::Key::Backspace => Ok(Self::Backspace),
-            ramen::input::Key::CapsLock => Ok(Self::CapsLock),
-            ramen::input::Key::Clear => Ok(Self::Clear),
-            ramen::input::Key::LeftControl => Ok(Self::LeftControl),
-            ramen::input::Key::RightControl => Ok(Self::RightControl),
-            ramen::input::Key::CrSel => Ok(Self::CrSel),
-            ramen::input::Key::Delete => Ok(Self::Delete),
-            ramen::input::Key::End => Ok(Self::End),
-            ramen::input::Key::Return => Ok(Self::Return),
-            ramen::input::Key::EraseEof => Ok(Self::EraseEof),
-            ramen::input::Key::Escape => Ok(Self::Escape),
-            ramen::input::Key::Execute => Ok(Self::Execute),
-            ramen::input::Key::ExSel => Ok(Self::ExSel),
-            ramen::input::Key::Help => Ok(Self::Help),
-            ramen::input::Key::Home => Ok(Self::Home),
-            ramen::input::Key::Insert => Ok(Self::Insert),
-            ramen::input::Key::NumLock => Ok(Self::NumLock),
-            ramen::input::Key::Pa1 => Ok(Self::Pa1),
-            ramen::input::Key::PageUp => Ok(Self::PageUp),
-            ramen::input::Key::PageDown => Ok(Self::PageDown),
-            ramen::input::Key::Pause => Ok(Self::Pause),
-            ramen::input::Key::Play => Ok(Self::MediaPlay),
-            ramen::input::Key::Print => Ok(Self::Print),
-            ramen::input::Key::PrintScreen => Ok(Self::PrintScreen),
-            ramen::input::Key::LeftShift => Ok(Self::LeftShift),
-            ramen::input::Key::RightShift => Ok(Self::RightShift),
-            ramen::input::Key::ScrollLock => Ok(Self::ScrollLock),
-            ramen::input::Key::Select => Ok(Self::Select),
-            ramen::input::Key::Sleep => Ok(Self::Sleep),
-            ramen::input::Key::Space => Ok(Self::Space),
-            ramen::input::Key::LeftSuper => Ok(Self::LeftWindows),
-            ramen::input::Key::RightSuper => Ok(Self::RightWindows),
-            ramen::input::Key::Tab => Ok(Self::Tab),
-            ramen::input::Key::Zoom => Ok(Self::Zoom),
-            ramen::input::Key::LeftArrow => Ok(Self::LeftArrow),
-            ramen::input::Key::UpArrow => Ok(Self::UpArrow),
-            ramen::input::Key::RightArrow => Ok(Self::RightArrow),
-            ramen::input::Key::DownArrow => Ok(Self::DownArrow),
-            ramen::input::Key::Alpha0 => Ok(Self::Alpha0),
-            ramen::input::Key::Alpha1 => Ok(Self::Alpha1),
-            ramen::input::Key::Alpha2 => Ok(Self::Alpha2),
-            ramen::input::Key::Alpha3 => Ok(Self::Alpha3),
-            ramen::input::Key::Alpha4 => Ok(Self::Alpha4),
-            ramen::input::Key::Alpha5 => Ok(Self::Alpha5),
-            ramen::input::Key::Alpha6 => Ok(Self::Alpha6),
-            ramen::input::Key::Alpha7 => Ok(Self::Alpha7),
-            ramen::input::Key::Alpha8 => Ok(Self::Alpha8),
-            ramen::input::Key::Alpha9 => Ok(Self::Alpha9),
-            ramen::input::Key::A => Ok(Self::A),
-            ramen::input::Key::B => Ok(Self::B),
-            ramen::input::Key::C => Ok(Self::C),
-            ramen::input::Key::D => Ok(Self::D),
-            ramen::input::Key::E => Ok(Self::E),
-            ramen::input::Key::F => Ok(Self::F),
-            ramen::input::Key::G => Ok(Self::G),
-            ramen::input::Key::H => Ok(Self::H),
-            ramen::input::Key::I => Ok(Self::I),
-            ramen::input::Key::J => Ok(Self::J),
-            ramen::input::Key::K => Ok(Self::K),
-            ramen::input::Key::L => Ok(Self::L),
-            ramen::input::Key::M => Ok(Self::M),
-            ramen::input::Key::N => Ok(Self::N),
-            ramen::input::Key::O => Ok(Self::O),
-            ramen::input::Key::P => Ok(Self::P),
-            ramen::input::Key::Q => Ok(Self::Q),
-            ramen::input::Key::R => Ok(Self::R),
-            ramen::input::Key::S => Ok(Self::S),
-            ramen::input::Key::T => Ok(Self::T),
-            ramen::input::Key::U => Ok(Self::U),
-            ramen::input::Key::V => Ok(Self::V),
-            ramen::input::Key::W => Ok(Self::W),
-            ramen::input::Key::X => Ok(Self::X),
-            ramen::input::Key::Y => Ok(Self::Y),
-            ramen::input::Key::Z => Ok(Self::Z),
-            ramen::input::Key::Comma => Ok(Self::OemComma),
-            ramen::input::Key::Minus => Ok(Self::OemMinus),
-            ramen::input::Key::Period => Ok(Self::OemPeriod),
-            ramen::input::Key::Plus => Ok(Self::OemPlus),
-            ramen::input::Key::Oem102 => Ok(Self::Oem102),
-            ramen::input::Key::OemClear => Ok(Self::OemClear),
-            ramen::input::Key::KeypadAdd => Ok(Self::KeypadAdd),
-            ramen::input::Key::KeypadSubtract => Ok(Self::KeypadSubtract),
-            ramen::input::Key::KeypadMultiply => Ok(Self::KeypadMultiply),
-            ramen::input::Key::KeypadDivide => Ok(Self::KeypadDivide),
-            ramen::input::Key::KeypadDecimal => Ok(Self::KeypadDecimal),
-            ramen::input::Key::KeypadSeparator => Ok(Self::KeypadSeparator),
-            ramen::input::Key::Keypad0 => Ok(Self::Keypad0),
-            ramen::input::Key::Keypad1 => Ok(Self::Keypad1),
-            ramen::input::Key::Keypad2 => Ok(Self::Keypad2),
-            ramen::input::Key::Keypad3 => Ok(Self::Keypad3),
-            ramen::input::Key::Keypad4 => Ok(Self::Keypad4),
-            ramen::input::Key::Keypad5 => Ok(Self::Keypad5),
-            ramen::input::Key::Keypad6 => Ok(Self::Keypad6),
-            ramen::input::Key::Keypad7 => Ok(Self::Keypad7),
-            ramen::input::Key::Keypad8 => Ok(Self::Keypad8),
-            ramen::input::Key::Keypad9 => Ok(Self::Keypad9),
-            ramen::input::Key::F1 => Ok(Self::F1),
-            ramen::input::Key::F2 => Ok(Self::F2),
-            ramen::input::Key::F3 => Ok(Self::F3),
-            ramen::input::Key::F4 => Ok(Self::F4),
-            ramen::input::Key::F5 => Ok(Self::F5),
-            ramen::input::Key::F6 => Ok(Self::F6),
-            ramen::input::Key::F7 => Ok(Self::F7),
-            ramen::input::Key::F8 => Ok(Self::F8),
-            ramen::input::Key::F9 => Ok(Self::F9),
-            ramen::input::Key::F10 => Ok(Self::F10),
-            ramen::input::Key::F11 => Ok(Self::F11),
-            ramen::input::Key::F12 => Ok(Self::F12),
-            ramen::input::Key::F13 => Ok(Self::F13),
-            ramen::input::Key::F14 => Ok(Self::F14),
-            ramen::input::Key::F15 => Ok(Self::F15),
-            ramen::input::Key::F16 => Ok(Self::F16),
-            ramen::input::Key::F17 => Ok(Self::F17),
-            ramen::input::Key::F18 => Ok(Self::F18),
-            ramen::input::Key::F19 => Ok(Self::F19),
-            ramen::input::Key::F20 => Ok(Self::F20),
-            ramen::input::Key::F21 => Ok(Self::F21),
-            ramen::input::Key::F22 => Ok(Self::F22),
-            ramen::input::Key::F23 => Ok(Self::F23),
-            ramen::input::Key::F24 => Ok(Self::F24),
-            ramen::input::Key::BrowserBack => Ok(Self::BrowserBack),
-            ramen::input::Key::BrowserFavourites => Ok(Self::BrowserFavourites),
-            ramen::input::Key::BrowserForward => Ok(Self::BrowserForward),
-            ramen::input::Key::BrowserHome => Ok(Self::BrowserHome),
-            ramen::input::Key::BrowserRefresh => Ok(Self::BrowserRefresh),
-            ramen::input::Key::BrowserSearch => Ok(Self::BrowserSearch),
-            ramen::input::Key::BrowserStop => Ok(Self::BrowserStop),
-            ramen::input::Key::ImeAccept => Ok(Self::ImeAccept),
-            ramen::input::Key::ImeConvert => Ok(Self::ImeConvert),
-            ramen::input::Key::ImeNonConvert => Ok(Self::ImeNonConvert),
-            ramen::input::Key::ImeFinal => Ok(Self::ImeFinal),
-            ramen::input::Key::ImeModeChangeRequest => Ok(Self::ImeModeChangeRequest),
-            ramen::input::Key::ImeProcess => Ok(Self::ImeProcess),
-            ramen::input::Key::ImeOn => Ok(Self::ImeOn),
-            ramen::input::Key::ImeOff => Ok(Self::ImeOff),
-            ramen::input::Key::ImeKanaOrHangul => Ok(Self::ImeKanaOrHangul),
-            ramen::input::Key::ImeHanjaOrKanji => Ok(Self::ImeHanjaOrKanji),
-            ramen::input::Key::ImeJunja => Ok(Self::ImeJunja),
-            ramen::input::Key::MediaNextTrack => Ok(Self::MediaNextTrack),
-            ramen::input::Key::MediaPreviousTrack => Ok(Self::MediaPreviousTrack),
-            ramen::input::Key::MediaPlayPause => Ok(Self::MediaPlayPause),
-            ramen::input::Key::MediaStop => Ok(Self::MediaStop),
-            ramen::input::Key::MediaVolumeDown => Ok(Self::MediaVolumeDown),
-            ramen::input::Key::MediaVolumeUp => Ok(Self::MediaVolumeUp),
-            ramen::input::Key::MediaVolumeMute => Ok(Self::MediaVolumeMute),
-            ramen::input::Key::LaunchApplication1 => Ok(Self::LaunchApp1),
-            ramen::input::Key::LaunchApplication2 => Ok(Self::LaunchApp2),
-            ramen::input::Key::LaunchMail => Ok(Self::LaunchMail),
-            ramen::input::Key::LaunchMediaSelect => Ok(Self::LaunchMedia),
+            crate::window::input::Key::Attn => Ok(Self::Attn),
+            crate::window::input::Key::LeftAlt => Ok(Self::LeftAlt),
+            crate::window::input::Key::RightAlt => Ok(Self::RightAlt),
+            crate::window::input::Key::Applications => Ok(Self::Applications),
+            crate::window::input::Key::Backspace => Ok(Self::Backspace),
+            crate::window::input::Key::CapsLock => Ok(Self::CapsLock),
+            crate::window::input::Key::Clear => Ok(Self::Clear),
+            crate::window::input::Key::LeftControl => Ok(Self::LeftControl),
+            crate::window::input::Key::RightControl => Ok(Self::RightControl),
+            crate::window::input::Key::CrSel => Ok(Self::CrSel),
+            crate::window::input::Key::Delete => Ok(Self::Delete),
+            crate::window::input::Key::End => Ok(Self::End),
+            crate::window::input::Key::Return => Ok(Self::Return),
+            crate::window::input::Key::EraseEof => Ok(Self::EraseEof),
+            crate::window::input::Key::Escape => Ok(Self::Escape),
+            crate::window::input::Key::Execute => Ok(Self::Execute),
+            crate::window::input::Key::ExSel => Ok(Self::ExSel),
+            crate::window::input::Key::Help => Ok(Self::Help),
+            crate::window::input::Key::Home => Ok(Self::Home),
+            crate::window::input::Key::Insert => Ok(Self::Insert),
+            crate::window::input::Key::NumLock => Ok(Self::NumLock),
+            crate::window::input::Key::Pa1 => Ok(Self::Pa1),
+            crate::window::input::Key::PageUp => Ok(Self::PageUp),
+            crate::window::input::Key::PageDown => Ok(Self::PageDown),
+            crate::window::input::Key::Pause => Ok(Self::Pause),
+            crate::window::input::Key::Play => Ok(Self::MediaPlay),
+            crate::window::input::Key::Print => Ok(Self::Print),
+            crate::window::input::Key::PrintScreen => Ok(Self::PrintScreen),
+            crate::window::input::Key::LeftShift => Ok(Self::LeftShift),
+            crate::window::input::Key::RightShift => Ok(Self::RightShift),
+            crate::window::input::Key::ScrollLock => Ok(Self::ScrollLock),
+            crate::window::input::Key::Select => Ok(Self::Select),
+            crate::window::input::Key::Sleep => Ok(Self::Sleep),
+            crate::window::input::Key::Space => Ok(Self::Space),
+            crate::window::input::Key::LeftSuper => Ok(Self::LeftWindows),
+            crate::window::input::Key::RightSuper => Ok(Self::RightWindows),
+            crate::window::input::Key::Tab => Ok(Self::Tab),
+            crate::window::input::Key::Zoom => Ok(Self::Zoom),
+            crate::window::input::Key::LeftArrow => Ok(Self::LeftArrow),
+            crate::window::input::Key::UpArrow => Ok(Self::UpArrow),
+            crate::window::input::Key::RightArrow => Ok(Self::RightArrow),
+            crate::window::input::Key::DownArrow => Ok(Self::DownArrow),
+            crate::window::input::Key::Alpha0 => Ok(Self::Alpha0),
+            crate::window::input::Key::Alpha1 => Ok(Self::Alpha1),
+            crate::window::input::Key::Alpha2 => Ok(Self::Alpha2),
+            crate::window::input::Key::Alpha3 => Ok(Self::Alpha3),
+            crate::window::input::Key::Alpha4 => Ok(Self::Alpha4),
+            crate::window::input::Key::Alpha5 => Ok(Self::Alpha5),
+            crate::window::input::Key::Alpha6 => Ok(Self::Alpha6),
+            crate::window::input::Key::Alpha7 => Ok(Self::Alpha7),
+            crate::window::input::Key::Alpha8 => Ok(Self::Alpha8),
+            crate::window::input::Key::Alpha9 => Ok(Self::Alpha9),
+            crate::window::input::Key::A => Ok(Self::A),
+            crate::window::input::Key::B => Ok(Self::B),
+            crate::window::input::Key::C => Ok(Self::C),
+            crate::window::input::Key::D => Ok(Self::D),
+            crate::window::input::Key::E => Ok(Self::E),
+            crate::window::input::Key::F => Ok(Self::F),
+            crate::window::input::Key::G => Ok(Self::G),
+            crate::window::input::Key::H => Ok(Self::H),
+            crate::window::input::Key::I => Ok(Self::I),
+            crate::window::input::Key::J => Ok(Self::J),
+            crate::window::input::Key::K => Ok(Self::K),
+            crate::window::input::Key::L => Ok(Self::L),
+            crate::window::input::Key::M => Ok(Self::M),
+            crate::window::input::Key::N => Ok(Self::N),
+            crate::window::input::Key::O => Ok(Self::O),
+            crate::window::input::Key::P => Ok(Self::P),
+            crate::window::input::Key::Q => Ok(Self::Q),
+            crate::window::input::Key::R => Ok(Self::R),
+            crate::window::input::Key::S => Ok(Self::S),
+            crate::window::input::Key::T => Ok(Self::T),
+            crate::window::input::Key::U => Ok(Self::U),
+            crate::window::input::Key::V => Ok(Self::V),
+            crate::window::input::Key::W => Ok(Self::W),
+            crate::window::input::Key::X => Ok(Self::X),
+            crate::window::input::Key::Y => Ok(Self::Y),
+            crate::window::input::Key::Z => Ok(Self::Z),
+            crate::window::input::Key::Comma => Ok(Self::OemComma),
+            crate::window::input::Key::Minus => Ok(Self::OemMinus),
+            crate::window::input::Key::Period => Ok(Self::OemPeriod),
+            crate::window::input::Key::Plus => Ok(Self::OemPlus),
+            crate::window::input::Key::Oem102 => Ok(Self::Oem102),
+            crate::window::input::Key::OemClear => Ok(Self::OemClear),
+            crate::window::input::Key::KeypadAdd => Ok(Self::KeypadAdd),
+            crate::window::input::Key::KeypadSubtract => Ok(Self::KeypadSubtract),
+            crate::window::input::Key::KeypadMultiply => Ok(Self::KeypadMultiply),
+            crate::window::input::Key::KeypadDivide => Ok(Self::KeypadDivide),
+            crate::window::input::Key::KeypadDecimal => Ok(Self::KeypadDecimal),
+            crate::window::input::Key::KeypadSeparator => Ok(Self::KeypadSeparator),
+            crate::window::input::Key::Keypad0 => Ok(Self::Keypad0),
+            crate::window::input::Key::Keypad1 => Ok(Self::Keypad1),
+            crate::window::input::Key::Keypad2 => Ok(Self::Keypad2),
+            crate::window::input::Key::Keypad3 => Ok(Self::Keypad3),
+            crate::window::input::Key::Keypad4 => Ok(Self::Keypad4),
+            crate::window::input::Key::Keypad5 => Ok(Self::Keypad5),
+            crate::window::input::Key::Keypad6 => Ok(Self::Keypad6),
+            crate::window::input::Key::Keypad7 => Ok(Self::Keypad7),
+            crate::window::input::Key::Keypad8 => Ok(Self::Keypad8),
+            crate::window::input::Key::Keypad9 => Ok(Self::Keypad9),
+            crate::window::input::Key::F1 => Ok(Self::F1),
+            crate::window::input::Key::F2 => Ok(Self::F2),
+            crate::window::input::Key::F3 => Ok(Self::F3),
+            crate::window::input::Key::F4 => Ok(Self::F4),
+            crate::window::input::Key::F5 => Ok(Self::F5),
+            crate::window::input::Key::F6 => Ok(Self::F6),
+            crate::window::input::Key::F7 => Ok(Self::F7),
+            crate::window::input::Key::F8 => Ok(Self::F8),
+            crate::window::input::Key::F9 => Ok(Self::F9),
+            crate::window::input::Key::F10 => Ok(Self::F10),
+            crate::window::input::Key::F11 => Ok(Self::F11),
+            crate::window::input::Key::F12 => Ok(Self::F12),
+            crate::window::input::Key::F13 => Ok(Self::F13),
+            crate::window::input::Key::F14 => Ok(Self::F14),
+            crate::window::input::Key::F15 => Ok(Self::F15),
+            crate::window::input::Key::F16 => Ok(Self::F16),
+            crate::window::input::Key::F17 => Ok(Self::F17),
+            crate::window::input::Key::F18 => Ok(Self::F18),
+            crate::window::input::Key::F19 => Ok(Self::F19),
+            crate::window::input::Key::F20 => Ok(Self::F20),
+            crate::window::input::Key::F21 => Ok(Self::F21),
+            crate::window::input::Key::F22 => Ok(Self::F22),
+            crate::window::input::Key::F23 => Ok(Self::F23),
+            crate::window::input::Key::F24 => Ok(Self::F24),
+            crate::window::input::Key::BrowserBack => Ok(Self::BrowserBack),
+            crate::window::input::Key::BrowserFavourites => Ok(Self::BrowserFavourites),
+            crate::window::input::Key::BrowserForward => Ok(Self::BrowserForward),
+            crate::window::input::Key::BrowserHome => Ok(Self::BrowserHome),
+            crate::window::input::Key::BrowserRefresh => Ok(Self::BrowserRefresh),
+            crate::window::input::Key::BrowserSearch => Ok(Self::BrowserSearch),
+            crate::window::input::Key::BrowserStop => Ok(Self::BrowserStop),
+            crate::window::input::Key::ImeAccept => Ok(Self::ImeAccept),
+            crate::window::input::Key::ImeConvert => Ok(Self::ImeConvert),
+            crate::window::input::Key::ImeNonConvert => Ok(Self::ImeNonConvert),
+            crate::window::input::Key::ImeFinal => Ok(Self::ImeFinal),
+            crate::window::input::Key::ImeModeChangeRequest => Ok(Self::ImeModeChangeRequest),
+            crate::window::input::Key::ImeProcess => Ok(Self::ImeProcess),
+            crate::window::input::Key::ImeOn => Ok(Self::ImeOn),
+            crate::window::input::Key::ImeOff => Ok(Self::ImeOff),
+            crate::window::input::Key::ImeKanaOrHangul => Ok(Self::ImeKanaOrHangul),
+            crate::window::input::Key::ImeHanjaOrKanji => Ok(Self::ImeHanjaOrKanji),
+            crate::window::input::Key::ImeJunja => Ok(Self::ImeJunja),
+            crate::window::input::Key::MediaNextTrack => Ok(Self::MediaNextTrack),
+            crate::window::input::Key::MediaPreviousTrack => Ok(Self::MediaPreviousTrack),
+            crate::window::input::Key::MediaPlayPause => Ok(Self::MediaPlayPause),
+            crate::window::input::Key::MediaStop => Ok(Self::MediaStop),
+            crate::window::input::Key::MediaVolumeDown => Ok(Self::MediaVolumeDown),
+            crate::window::input::Key::MediaVolumeUp => Ok(Self::MediaVolumeUp),
+            crate::window::input::Key::MediaVolumeMute => Ok(Self::MediaVolumeMute),
+            crate::window::input::Key::LaunchApplication1 => Ok(Self::LaunchApp1),
+            crate::window::input::Key::LaunchApplication2 => Ok(Self::LaunchApp2),
+            crate::window::input::Key::LaunchMail => Ok(Self::LaunchMail),
+            crate::window::input::Key::LaunchMediaSelect => Ok(Self::LaunchMedia),
             _ => Err(()),
         }
     }
 }
 
-pub fn ramen2imgui(key: ramen::input::Key) -> Option<imgui::Key> {
+#[cfg(feature = "tas")]
+pub fn ramen2imgui(key: crate::window::input::Key) -> Option<imgui::Key> {
     match key {
-        // ramen::input::Key::Attn => Some(imgui::Key::Attn),
-        ramen::input::Key::LeftAlt => Some(imgui::Key::LeftAlt),
-        ramen::input::Key::RightAlt => Some(imgui::Key::RightAlt),
-        ramen::input::Key::Applications => Some(imgui::Key::Menu),
-        ramen::input::Key::Backspace => Some(imgui::Key::Backspace),
-        ramen::input::Key::CapsLock => Some(imgui::Key::CapsLock),
-        // ramen::input::Key::Clear => Some(imgui::Key::Clear),
-        ramen::input::Key::LeftControl => Some(imgui::Key::LeftCtrl),
-        ramen::input::Key::RightControl => Some(imgui::Key::RightCtrl),
-        // ramen::input::Key::CrSel => Some(imgui::Key::CrSel),
-        ramen::input::Key::Delete => Some(imgui::Key::Delete),
-        ramen::input::Key::End => Some(imgui::Key::End),
-        ramen::input::Key::Return => Some(imgui::Key::Enter),
-        // ramen::input::Key::EraseEof => Some(imgui::Key::EraseEof),
-        ramen::input::Key::Escape => Some(imgui::Key::Escape),
-        // ramen::input::Key::Execute => Some(imgui::Key::Execute),
-        // ramen::input::Key::ExSel => Some(imgui::Key::ExSel),
-        // ramen::input::Key::Help => Some(imgui::Key::Help),
-        ramen::input::Key::Home => Some(imgui::Key::Home),
-        ramen::input::Key::Insert => Some(imgui::Key::Insert),
-        ramen::input::Key::NumLock => Some(imgui::Key::NumLock),
-        // ramen::input::Key::Pa1 => Some(imgui::Key::Pa1),
-        ramen::input::Key::PageUp => Some(imgui::Key::PageUp),
-        ramen::input::Key::PageDown => Some(imgui::Key::PageDown),
-        ramen::input::Key::Pause => Some(imgui::Key::Pause),
-        // ramen::input::Key::Play => Some(imgui::Key::MediaPlay),
-        // ramen::input::Key::Print => Some(imgui::Key::PrintScreen),
-        ramen::input::Key::PrintScreen => Some(imgui::Key::PrintScreen),
-        ramen::input::Key::LeftShift => Some(imgui::Key::LeftShift),
-        ramen::input::Key::RightShift => Some(imgui::Key::RightShift),
-        ramen::input::Key::ScrollLock => Some(imgui::Key::ScrollLock),
-        // ramen::input::Key::Select => Some(imgui::Key::Select),
-        // ramen::input::Key::Sleep => Some(imgui::Key::Sleep),
-        ramen::input::Key::Space => Some(imgui::Key::Space),
-        ramen::input::Key::LeftSuper => Some(imgui::Key::LeftSuper),
-        ramen::input::Key::RightSuper => Some(imgui::Key::RightSuper),
-        ramen::input::Key::Tab => Some(imgui::Key::Tab),
-        // ramen::input::Key::Zoom => Some(imgui::Key::Zoom),
-        ramen::input::Key::LeftArrow => Some(imgui::Key::LeftArrow),
-        ramen::input::Key::UpArrow => Some(imgui::Key::UpArrow),
-        ramen::input::Key::RightArrow => Some(imgui::Key::RightArrow),
-        ramen::input::Key::DownArrow => Some(imgui::Key::DownArrow),
-        ramen::input::Key::Alpha0 => Some(imgui::Key::Alpha0),
-        ramen::input::Key::Alpha1 => Some(imgui::Key::Alpha1),
-        ramen::input::Key::Alpha2 => Some(imgui::Key::Alpha2),
-        ramen::input::Key::Alpha3 => Some(imgui::Key::Alpha3),
-        ramen::input::Key::Alpha4 => Some(imgui::Key::Alpha4),
-        ramen::input::Key::Alpha5 => Some(imgui::Key::Alpha5),
-        ramen::input::Key::Alpha6 => Some(imgui::Key::Alpha6),
-        ramen::input::Key::Alpha7 => Some(imgui::Key::Alpha7),
-        ramen::input::Key::Alpha8 => Some(imgui::Key::Alpha8),
-        ramen::input::Key::Alpha9 => Some(imgui::Key::Alpha9),
-        ramen::input::Key::A => Some(imgui::Key::A),
-        ramen::input::Key::B => Some(imgui::Key::B),
-        ramen::input::Key::C => Some(imgui::Key::C),
-        ramen::input::Key::D => Some(imgui::Key::D),
-        ramen::input::Key::E => Some(imgui::Key::E),
-        ramen::input::Key::F => Some(imgui::Key::F),
-        ramen::input::Key::G => Some(imgui::Key::G),
-        ramen::input::Key::H => Some(imgui::Key::H),
-        ramen::input::Key::I => Some(imgui::Key::I),
-        ramen::input::Key::J => Some(imgui::Key::J),
-        ramen::input::Key::K => Some(imgui::Key::K),
-        ramen::input::Key::L => Some(imgui::Key::L),
-        ramen::input::Key::M => Some(imgui::Key::M),
-        ramen::input::Key::N => Some(imgui::Key::N),
-        ramen::input::Key::O => Some(imgui::Key::O),
-        ramen::input::Key::P => Some(imgui::Key::P),
-        ramen::input::Key::Q => Some(imgui::Key::Q),
-        ramen::input::Key::R => Some(imgui::Key::R),
-        ramen::input::Key::S => Some(imgui::Key::S),
-        ramen::input::Key::T => Some(imgui::Key::T),
-        ramen::input::Key::U => Some(imgui::Key::U),
-        ramen::input::Key::V => Some(imgui::Key::V),
-        ramen::input::Key::W => Some(imgui::Key::W),
-        ramen::input::Key::X => Some(imgui::Key::X),
-        ramen::input::Key::Y => Some(imgui::Key::Y),
-        ramen::input::Key::Z => Some(imgui::Key::Z),
-        ramen::input::Key::Comma => Some(imgui::Key::Comma),
-        ramen::input::Key::Minus => Some(imgui::Key::Minus),
-        ramen::input::Key::Period => Some(imgui::Key::Period),
-        ramen::input::Key::Slash => Some(imgui::Key::Slash),
-        // ramen::input::Key::Plus => Some(imgui::Key::KeypadAdd),
-        // ramen::input::Key::Oem102 => Some(imgui::Key::Oem102),
-        // ramen::input::Key::OemClear => Some(imgui::Key::OemClear),
-        ramen::input::Key::KeypadAdd => Some(imgui::Key::KeypadAdd),
-        ramen::input::Key::KeypadSubtract => Some(imgui::Key::KeypadSubtract),
-        ramen::input::Key::KeypadMultiply => Some(imgui::Key::KeypadMultiply),
-        ramen::input::Key::KeypadDivide => Some(imgui::Key::KeypadDivide),
-        ramen::input::Key::KeypadDecimal => Some(imgui::Key::KeypadDecimal),
-        // ramen::input::Key::KeypadSeparator => Some(imgui::Key::KeypadSeparator),
-        ramen::input::Key::Keypad0 => Some(imgui::Key::Keypad0),
-        ramen::input::Key::Keypad1 => Some(imgui::Key::Keypad1),
-        ramen::input::Key::Keypad2 => Some(imgui::Key::Keypad2),
-        ramen::input::Key::Keypad3 => Some(imgui::Key::Keypad3),
-        ramen::input::Key::Keypad4 => Some(imgui::Key::Keypad4),
-        ramen::input::Key::Keypad5 => Some(imgui::Key::Keypad5),
-        ramen::input::Key::Keypad6 => Some(imgui::Key::Keypad6),
-        ramen::input::Key::Keypad7 => Some(imgui::Key::Keypad7),
-        ramen::input::Key::Keypad8 => Some(imgui::Key::Keypad8),
-        ramen::input::Key::Keypad9 => Some(imgui::Key::Keypad9),
-        ramen::input::Key::F1 => Some(imgui::Key::F1),
-        ramen::input::Key::F2 => Some(imgui::Key::F2),
-        ramen::input::Key::F3 => Some(imgui::Key::F3),
-        ramen::input::Key::F4 => Some(imgui::Key::F4),
-        ramen::input::Key::F5 => Some(imgui::Key::F5),
-        ramen::input::Key::F6 => Some(imgui::Key::F6),
-        ramen::input::Key::F7 => Some(imgui::Key::F7),
-        ramen::input::Key::F8 => Some(imgui::Key::F8),
-        ramen::input::Key::F9 => Some(imgui::Key::F9),
-        ramen::input::Key::F10 => Some(imgui::Key::F10),
-        ramen::input::Key::F11 => Some(imgui::Key::F11),
-        ramen::input::Key::F12 => Some(imgui::Key::F12),
-        // ramen::input::Key::F13 => Some(imgui::Key::F13),
-        // ramen::input::Key::F14 => Some(imgui::Key::F14),
-        // ramen::input::Key::F15 => Some(imgui::Key::F15),
-        // ramen::input::Key::F16 => Some(imgui::Key::F16),
-        // ramen::input::Key::F17 => Some(imgui::Key::F17),
-        // ramen::input::Key::F18 => Some(imgui::Key::F18),
-        // ramen::input::Key::F19 => Some(imgui::Key::F19),
-        // ramen::input::Key::F20 => Some(imgui::Key::F20),
-        // ramen::input::Key::F21 => Some(imgui::Key::F21),
-        // ramen::input::Key::F22 => Some(imgui::Key::F22),
-        // ramen::input::Key::F23 => Some(imgui::Key::F23),
-        // ramen::input::Key::F24 => Some(imgui::Key::F24),
-        // ramen::input::Key::BrowserBack => Some(imgui::Key::BrowserBack),
-        // ramen::input::Key::BrowserFavourites => Some(imgui::Key::BrowserFavourites),
-        // ramen::input::Key::BrowserForward => Some(imgui::Key::BrowserForward),
-        // ramen::input::Key::BrowserHome => Some(imgui::Key::BrowserHome),
-        // ramen::input::Key::BrowserRefresh => Some(imgui::Key::BrowserRefresh),
-        // ramen::input::Key::BrowserSearch => Some(imgui::Key::BrowserSearch),
-        // ramen::input::Key::BrowserStop => Some(imgui::Key::BrowserStop),
-        // ramen::input::Key::ImeAccept => Some(imgui::Key::ImeAccept),
-        // ramen::input::Key::ImeConvert => Some(imgui::Key::ImeConvert),
-        // ramen::input::Key::ImeNonConvert => Some(imgui::Key::ImeNonConvert),
-        // ramen::input::Key::ImeFinal => Some(imgui::Key::ImeFinal),
-        // ramen::input::Key::ImeModeChangeRequest => Some(imgui::Key::ImeModeChangeRequest),
-        // ramen::input::Key::ImeProcess => Some(imgui::Key::ImeProcess),
-        // ramen::input::Key::ImeOn => Some(imgui::Key::ImeOn),
-        // ramen::input::Key::ImeOff => Some(imgui::Key::ImeOff),
-        // ramen::input::Key::ImeKanaOrHangul => Some(imgui::Key::ImeKanaOrHangul),
-        // ramen::input::Key::ImeHanjaOrKanji => Some(imgui::Key::ImeHanjaOrKanji),
-        // ramen::input::Key::ImeJunja => Some(imgui::Key::ImeJunja),
-        // ramen::input::Key::MediaNextTrack => Some(imgui::Key::MediaNextTrack),
-        // ramen::input::Key::MediaPreviousTrack => Some(imgui::Key::MediaPreviousTrack),
-        // ramen::input::Key::MediaPlayPause => Some(imgui::Key::MediaPlayPause),
-        // ramen::input::Key::MediaStop => Some(imgui::Key::MediaStop),
-        // ramen::input::Key::MediaVolumeDown => Some(imgui::Key::MediaVolumeDown),
-        // ramen::input::Key::MediaVolumeUp => Some(imgui::Key::MediaVolumeUp),
-        // ramen::input::Key::MediaVolumeMute => Some(imgui::Key::MediaVolumeMute),
-        // ramen::input::Key::LaunchApplication1 => Some(imgui::Key::LaunchApp1),
-        // ramen::input::Key::LaunchApplication2 => Some(imgui::Key::LaunchApp2),
-        // ramen::input::Key::LaunchMail => Some(imgui::Key::LaunchMail),
-        // ramen::input::Key::LaunchMediaSelect => Some(imgui::Key::LaunchMedia),
+        // crate::window::input::Key::Attn => Some(imgui::Key::Attn),
+        crate::window::input::Key::LeftAlt => Some(imgui::Key::LeftAlt),
+        crate::window::input::Key::RightAlt => Some(imgui::Key::RightAlt),
+        crate::window::input::Key::Applications => Some(imgui::Key::Menu),
+        crate::window::input::Key::Backspace => Some(imgui::Key::Backspace),
+        crate::window::input::Key::CapsLock => Some(imgui::Key::CapsLock),
+        // crate::window::input::Key::Clear => Some(imgui::Key::Clear),
+        crate::window::input::Key::LeftControl => Some(imgui::Key::LeftCtrl),
+        crate::window::input::Key::RightControl => Some(imgui::Key::RightCtrl),
+        // crate::window::input::Key::CrSel => Some(imgui::Key::CrSel),
+        crate::window::input::Key::Delete => Some(imgui::Key::Delete),
+        crate::window::input::Key::End => Some(imgui::Key::End),
+        crate::window::input::Key::Return => Some(imgui::Key::Enter),
+        // crate::window::input::Key::EraseEof => Some(imgui::Key::EraseEof),
+        crate::window::input::Key::Escape => Some(imgui::Key::Escape),
+        // crate::window::input::Key::Execute => Some(imgui::Key::Execute),
+        // crate::window::input::Key::ExSel => Some(imgui::Key::ExSel),
+        // crate::window::input::Key::Help => Some(imgui::Key::Help),
+        crate::window::input::Key::Home => Some(imgui::Key::Home),
+        crate::window::input::Key::Insert => Some(imgui::Key::Insert),
+        crate::window::input::Key::NumLock => Some(imgui::Key::NumLock),
+        // crate::window::input::Key::Pa1 => Some(imgui::Key::Pa1),
+        crate::window::input::Key::PageUp => Some(imgui::Key::PageUp),
+        crate::window::input::Key::PageDown => Some(imgui::Key::PageDown),
+        crate::window::input::Key::Pause => Some(imgui::Key::Pause),
+        // crate::window::input::Key::Play => Some(imgui::Key::MediaPlay),
+        // crate::window::input::Key::Print => Some(imgui::Key::PrintScreen),
+        crate::window::input::Key::PrintScreen => Some(imgui::Key::PrintScreen),
+        crate::window::input::Key::LeftShift => Some(imgui::Key::LeftShift),
+        crate::window::input::Key::RightShift => Some(imgui::Key::RightShift),
+        crate::window::input::Key::ScrollLock => Some(imgui::Key::ScrollLock),
+        // crate::window::input::Key::Select => Some(imgui::Key::Select),
+        // crate::window::input::Key::Sleep => Some(imgui::Key::Sleep),
+        crate::window::input::Key::Space => Some(imgui::Key::Space),
+        crate::window::input::Key::LeftSuper => Some(imgui::Key::LeftSuper),
+        crate::window::input::Key::RightSuper => Some(imgui::Key::RightSuper),
+        crate::window::input::Key::Tab => Some(imgui::Key::Tab),
+        // crate::window::input::Key::Zoom => Some(imgui::Key::Zoom),
+        crate::window::input::Key::LeftArrow => Some(imgui::Key::LeftArrow),
+        crate::window::input::Key::UpArrow => Some(imgui::Key::UpArrow),
+        crate::window::input::Key::RightArrow => Some(imgui::Key::RightArrow),
+        crate::window::input::Key::DownArrow => Some(imgui::Key::DownArrow),
+        crate::window::input::Key::Alpha0 => Some(imgui::Key::Alpha0),
+        crate::window::input::Key::Alpha1 => Some(imgui::Key::Alpha1),
+        crate::window::input::Key::Alpha2 => Some(imgui::Key::Alpha2),
+        crate::window::input::Key::Alpha3 => Some(imgui::Key::Alpha3),
+        crate::window::input::Key::Alpha4 => Some(imgui::Key::Alpha4),
+        crate::window::input::Key::Alpha5 => Some(imgui::Key::Alpha5),
+        crate::window::input::Key::Alpha6 => Some(imgui::Key::Alpha6),
+        crate::window::input::Key::Alpha7 => Some(imgui::Key::Alpha7),
+        crate::window::input::Key::Alpha8 => Some(imgui::Key::Alpha8),
+        crate::window::input::Key::Alpha9 => Some(imgui::Key::Alpha9),
+        crate::window::input::Key::A => Some(imgui::Key::A),
+        crate::window::input::Key::B => Some(imgui::Key::B),
+        crate::window::input::Key::C => Some(imgui::Key::C),
+        crate::window::input::Key::D => Some(imgui::Key::D),
+        crate::window::input::Key::E => Some(imgui::Key::E),
+        crate::window::input::Key::F => Some(imgui::Key::F),
+        crate::window::input::Key::G => Some(imgui::Key::G),
+        crate::window::input::Key::H => Some(imgui::Key::H),
+        crate::window::input::Key::I => Some(imgui::Key::I),
+        crate::window::input::Key::J => Some(imgui::Key::J),
+        crate::window::input::Key::K => Some(imgui::Key::K),
+        crate::window::input::Key::L => Some(imgui::Key::L),
+        crate::window::input::Key::M => Some(imgui::Key::M),
+        crate::window::input::Key::N => Some(imgui::Key::N),
+        crate::window::input::Key::O => Some(imgui::Key::O),
+        crate::window::input::Key::P => Some(imgui::Key::P),
+        crate::window::input::Key::Q => Some(imgui::Key::Q),
+        crate::window::input::Key::R => Some(imgui::Key::R),
+        crate::window::input::Key::S => Some(imgui::Key::S),
+        crate::window::input::Key::T => Some(imgui::Key::T),
+        crate::window::input::Key::U => Some(imgui::Key::U),
+        crate::window::input::Key::V => Some(imgui::Key::V),
+        crate::window::input::Key::W => Some(imgui::Key::W),
+        crate::window::input::Key::X => Some(imgui::Key::X),
+        crate::window::input::Key::Y => Some(imgui::Key::Y),
+        crate::window::input::Key::Z => Some(imgui::Key::Z),
+        crate::window::input::Key::Comma => Some(imgui::Key::Comma),
+        crate::window::input::Key::Minus => Some(imgui::Key::Minus),
+        crate::window::input::Key::Period => Some(imgui::Key::Period),
+        crate::window::input::Key::Slash => Some(imgui::Key::Slash),
+        // crate::window::input::Key::Plus => Some(imgui::Key::KeypadAdd),
+        // crate::window::input::Key::Oem102 => Some(imgui::Key::Oem102),
+        // crate::window::input::Key::OemClear => Some(imgui::Key::OemClear),
+        crate::window::input::Key::KeypadAdd => Some(imgui::Key::KeypadAdd),
+        crate::window::input::Key::KeypadSubtract => Some(imgui::Key::KeypadSubtract),
+        crate::window::input::Key::KeypadMultiply => Some(imgui::Key::KeypadMultiply),
+        crate::window::input::Key::KeypadDivide => Some(imgui::Key::KeypadDivide),
+        crate::window::input::Key::KeypadDecimal => Some(imgui::Key::KeypadDecimal),
+        // crate::window::input::Key::KeypadSeparator => Some(imgui::Key::KeypadSeparator),
+        crate::window::input::Key::Keypad0 => Some(imgui::Key::Keypad0),
+        crate::window::input::Key::Keypad1 => Some(imgui::Key::Keypad1),
+        crate::window::input::Key::Keypad2 => Some(imgui::Key::Keypad2),
+        crate::window::input::Key::Keypad3 => Some(imgui::Key::Keypad3),
+        crate::window::input::Key::Keypad4 => Some(imgui::Key::Keypad4),
+        crate::window::input::Key::Keypad5 => Some(imgui::Key::Keypad5),
+        crate::window::input::Key::Keypad6 => Some(imgui::Key::Keypad6),
+        crate::window::input::Key::Keypad7 => Some(imgui::Key::Keypad7),
+        crate::window::input::Key::Keypad8 => Some(imgui::Key::Keypad8),
+        crate::window::input::Key::Keypad9 => Some(imgui::Key::Keypad9),
+        crate::window::input::Key::F1 => Some(imgui::Key::F1),
+        crate::window::input::Key::F2 => Some(imgui::Key::F2),
+        crate::window::input::Key::F3 => Some(imgui::Key::F3),
+        crate::window::input::Key::F4 => Some(imgui::Key::F4),
+        crate::window::input::Key::F5 => Some(imgui::Key::F5),
+        crate::window::input::Key::F6 => Some(imgui::Key::F6),
+        crate::window::input::Key::F7 => Some(imgui::Key::F7),
+        crate::window::input::Key::F8 => Some(imgui::Key::F8),
+        crate::window::input::Key::F9 => Some(imgui::Key::F9),
+        crate::window::input::Key::F10 => Some(imgui::Key::F10),
+        crate::window::input::Key::F11 => Some(imgui::Key::F11),
+        crate::window::input::Key::F12 => Some(imgui::Key::F12),
+        // crate::window::input::Key::F13 => Some(imgui::Key::F13),
+        // crate::window::input::Key::F14 => Some(imgui::Key::F14),
+        // crate::window::input::Key::F15 => Some(imgui::Key::F15),
+        // crate::window::input::Key::F16 => Some(imgui::Key::F16),
+        // crate::window::input::Key::F17 => Some(imgui::Key::F17),
+        // crate::window::input::Key::F18 => Some(imgui::Key::F18),
+        // crate::window::input::Key::F19 => Some(imgui::Key::F19),
+        // crate::window::input::Key::F20 => Some(imgui::Key::F20),
+        // crate::window::input::Key::F21 => Some(imgui::Key::F21),
+        // crate::window::input::Key::F22 => Some(imgui::Key::F22),
+        // crate::window::input::Key::F23 => Some(imgui::Key::F23),
+        // crate::window::input::Key::F24 => Some(imgui::Key::F24),
+        // crate::window::input::Key::BrowserBack => Some(imgui::Key::BrowserBack),
+        // crate::window::input::Key::BrowserFavourites => Some(imgui::Key::BrowserFavourites),
+        // crate::window::input::Key::BrowserForward => Some(imgui::Key::BrowserForward),
+        // crate::window::input::Key::BrowserHome => Some(imgui::Key::BrowserHome),
+        // crate::window::input::Key::BrowserRefresh => Some(imgui::Key::BrowserRefresh),
+        // crate::window::input::Key::BrowserSearch => Some(imgui::Key::BrowserSearch),
+        // crate::window::input::Key::BrowserStop => Some(imgui::Key::BrowserStop),
+        // crate::window::input::Key::ImeAccept => Some(imgui::Key::ImeAccept),
+        // crate::window::input::Key::ImeConvert => Some(imgui::Key::ImeConvert),
+        // crate::window::input::Key::ImeNonConvert => Some(imgui::Key::ImeNonConvert),
+        // crate::window::input::Key::ImeFinal => Some(imgui::Key::ImeFinal),
+        // crate::window::input::Key::ImeModeChangeRequest => Some(imgui::Key::ImeModeChangeRequest),
+        // crate::window::input::Key::ImeProcess => Some(imgui::Key::ImeProcess),
+        // crate::window::input::Key::ImeOn => Some(imgui::Key::ImeOn),
+        // crate::window::input::Key::ImeOff => Some(imgui::Key::ImeOff),
+        // crate::window::input::Key::ImeKanaOrHangul => Some(imgui::Key::ImeKanaOrHangul),
+        // crate::window::input::Key::ImeHanjaOrKanji => Some(imgui::Key::ImeHanjaOrKanji),
+        // crate::window::input::Key::ImeJunja => Some(imgui::Key::ImeJunja),
+        // crate::window::input::Key::MediaNextTrack => Some(imgui::Key::MediaNextTrack),
+        // crate::window::input::Key::MediaPreviousTrack => Some(imgui::Key::MediaPreviousTrack),
+        // crate::window::input::Key::MediaPlayPause => Some(imgui::Key::MediaPlayPause),
+        // crate::window::input::Key::MediaStop => Some(imgui::Key::MediaStop),
+        // crate::window::input::Key::MediaVolumeDown => Some(imgui::Key::MediaVolumeDown),
+        // crate::window::input::Key::MediaVolumeUp => Some(imgui::Key::MediaVolumeUp),
+        // crate::window::input::Key::MediaVolumeMute => Some(imgui::Key::MediaVolumeMute),
+        // crate::window::input::Key::LaunchApplication1 => Some(imgui::Key::LaunchApp1),
+        // crate::window::input::Key::LaunchApplication2 => Some(imgui::Key::LaunchApp2),
+        // crate::window::input::Key::LaunchMail => Some(imgui::Key::LaunchMail),
+        // crate::window::input::Key::LaunchMediaSelect => Some(imgui::Key::LaunchMedia),
         _ => None,
     }
 }
 
-pub fn ramen2vk(x: ramen::input::Key) -> u8 {
+pub fn ramen2vk(x: crate::window::input::Key) -> u8 {
     Button::try_from(x).map(|e| e as u8).unwrap_or(0)
 }
 
@@ -1064,19 +1061,19 @@ pub enum MouseButton {
     Middle = 3,
 }
 
-impl TryFrom<ramen::input::MouseButton> for MouseButton {
+impl TryFrom<crate::window::input::MouseButton> for MouseButton {
     type Error = ();
 
-    fn try_from(key: ramen::input::MouseButton) -> Result<Self, Self::Error> {
+    fn try_from(key: crate::window::input::MouseButton) -> Result<Self, Self::Error> {
         match key {
-            ramen::input::MouseButton::Left => Ok(Self::Left),
-            ramen::input::MouseButton::Right => Ok(Self::Right),
-            ramen::input::MouseButton::Middle => Ok(Self::Middle),
+            crate::window::input::MouseButton::Left => Ok(Self::Left),
+            crate::window::input::MouseButton::Right => Ok(Self::Right),
+            crate::window::input::MouseButton::Middle => Ok(Self::Middle),
         }
     }
 }
 
-pub fn ramen2mb(x: ramen::input::MouseButton) -> i8 {
+pub fn ramen2mb(x: crate::window::input::MouseButton) -> i8 {
     MouseButton::try_from(x).map(|e| e as i8).unwrap_or(0)
 }
 
@@ -1137,8 +1134,25 @@ impl Input {
         }
     }
 
-    pub fn button_press(&mut self, code: u8, store_cur_prev: bool) {
+    /// What a key press should be recorded as, once `keyboard_set_map` has had its say.
+    ///
+    /// Returns `None` for a key mapped to `vk_nokey`, which means discard it: slot 0 is not storage
+    /// but a question answered from the whole array (see `keyboard_check_internal_indirect`), so
+    /// writing a press into it would make "is no key down" report that one is.
+    ///
+    /// The normalisation runs **after** the map rather than before, and that is the load-bearing
+    /// part. A game maps onto `vk_shift`, because that is the only shift GameMaker's own code can
+    /// name -- while `keyboard_check(vk_shift)` reads the left and right slots and never slot 16. A
+    /// target left un-normalised would therefore land somewhere nothing ever reads, and the remap
+    /// would look like it had silently done nothing.
+    fn remap_button(&self, code: u8) -> Option<u8> {
         let code = VK_FN_INPUT_REMAP[code as usize];
+        let mapped = self.button_remap[code as usize];
+        if mapped == VK_NOKEY { None } else { Some(VK_FN_INPUT_REMAP[mapped as usize]) }
+    }
+
+    pub fn button_press(&mut self, code: u8, store_cur_prev: bool) {
+        let Some(code) = self.remap_button(code) else { return };
         self.button_state[code as usize] = true;
         self.button_state_press[code as usize] = true;
         if store_cur_prev {
@@ -1148,7 +1162,7 @@ impl Input {
     }
 
     pub fn button_release(&mut self, code: u8, store_cur_prev: bool) {
-        let code = VK_FN_INPUT_REMAP[code as usize];
+        let Some(code) = self.remap_button(code) else { return };
         self.button_state[code as usize] = false;
         self.button_state_release[code as usize] = true;
         if store_cur_prev && self.key_current == code {
@@ -1295,9 +1309,25 @@ impl Input {
         self.button_remap[vk as usize]
     }
 
-    #[inline]
+    /// Remaps one key onto another, as `keyboard_set_map` does -- the key the player presses on the
+    /// left, the key the game will see on the right.
+    ///
+    /// The sides are written too when `vk_from` is a modifier GameMaker treats as one key. A game
+    /// says `keyboard_set_map(vk_shift, ...)` because that is the only shift it can name, but input
+    /// reaches this engine already split into left and right -- the browser says `ShiftLeft` -- so
+    /// an entry on slot 16 alone would never be consulted by anything a player can actually press.
     pub fn keyboard_set_map(&mut self, vk_from: u8, vk_to: u8) {
         self.button_remap[vk_from as usize] = vk_to;
+        let sides = match vk_from {
+            x if x == Button::Shift as u8 => Some((Button::LeftShift as u8, Button::RightShift as u8)),
+            x if x == Button::Control as u8 => Some((Button::LeftControl as u8, Button::RightControl as u8)),
+            x if x == Button::Alt as u8 => Some((Button::LeftAlt as u8, Button::RightAlt as u8)),
+            _ => None,
+        };
+        if let Some((left, right)) = sides {
+            self.button_remap[left as usize] = vk_to;
+            self.button_remap[right as usize] = vk_to;
+        }
     }
 
     #[inline]
@@ -1469,5 +1499,80 @@ impl Input {
     /// Hard reset, clearing all state.
     pub fn reset(&mut self) {
         *self = Self::new();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const VK_SHIFT: u8 = Button::Shift as u8;
+    const VK_SPACE: u8 = Button::Space as u8;
+    const VK_LEFT_SHIFT: u8 = Button::LeftShift as u8;
+    const VK_Z: u8 = Button::Z as u8;
+
+    /// A game asks about `vk_shift`, never about the left one specifically, so a remap that lands
+    /// anywhere else is a remap nothing can see. This is the case that made the normalisation run
+    /// after the map rather than before it.
+    #[test]
+    fn maps_onto_vk_shift_where_a_game_can_read_it() {
+        let mut input = Input::new();
+        input.keyboard_set_map(VK_SPACE, VK_SHIFT);
+        input.button_press(VK_SPACE, true);
+        assert!(input.keyboard_check(VK_SHIFT));
+        assert!(input.keyboard_check_pressed(VK_SHIFT));
+    }
+
+    /// The other half of a rebind: the key the action moved *off* must stop doing it, or both keys
+    /// work and swapping two actions is impossible.
+    #[test]
+    fn maps_onto_nokey_to_suppress_a_key() {
+        let mut input = Input::new();
+        input.keyboard_set_map(VK_LEFT_SHIFT, VK_NOKEY);
+        input.button_press(VK_LEFT_SHIFT, true);
+        assert!(!input.keyboard_check(VK_SHIFT));
+        // The press really is gone rather than parked in slot 0: `vk_nokey` is computed from the
+        // whole array, so it still answers "nothing is down" -- which is the point of discarding.
+        assert!(input.keyboard_check(VK_NOKEY));
+        assert!(!input.keyboard_check(VK_ANYKEY));
+    }
+
+    /// Input arrives already split into left and right -- the browser says `ShiftLeft` -- while a
+    /// game can only name `vk_shift`, so an entry set on the generic key has to reach the sides.
+    #[test]
+    fn a_map_set_on_vk_shift_fires_for_either_shift() {
+        let mut input = Input::new();
+        input.keyboard_set_map(VK_SHIFT, VK_Z);
+        input.button_press(VK_LEFT_SHIFT, true);
+        assert!(input.keyboard_check(VK_Z));
+    }
+
+    #[test]
+    fn a_remapped_key_releases_the_key_it_became() {
+        let mut input = Input::new();
+        input.keyboard_set_map(VK_SPACE, VK_SHIFT);
+        input.button_press(VK_SPACE, true);
+        input.step();
+        input.button_release(VK_SPACE, true);
+        assert!(!input.keyboard_check(VK_SHIFT));
+        assert!(input.keyboard_check_released(VK_SHIFT));
+    }
+
+    #[test]
+    fn unset_map_puts_every_key_back() {
+        let mut input = Input::new();
+        input.keyboard_set_map(VK_SPACE, VK_SHIFT);
+        input.keyboard_unset_map();
+        input.button_press(VK_SPACE, true);
+        assert!(input.keyboard_check(VK_SPACE));
+        assert!(!input.keyboard_check(VK_SHIFT));
+    }
+
+    #[test]
+    fn an_unmapped_key_is_untouched() {
+        let mut input = Input::new();
+        input.keyboard_set_map(VK_SPACE, VK_SHIFT);
+        input.button_press(VK_Z, true);
+        assert!(input.keyboard_check(VK_Z));
     }
 }

@@ -1,8 +1,8 @@
 use super::SoundParams;
 use std::sync::{
+    Arc,
     atomic::{AtomicU32, Ordering},
     mpsc::{self, Receiver, Sender},
-    Arc,
 };
 use udon::source::{ChannelCount, Sample, SampleRate, Source};
 

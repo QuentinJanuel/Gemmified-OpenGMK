@@ -1,0 +1,12 @@
+# Lets `cargo test --target wasm32-wasi` execute its test binaries instead of only building them.
+# See scripts/wasi-run.mjs for why the emulator's tests run on wasm rather than natively.
+#
+# The path is relative to this config file, not to the working directory: cargo resolves a runner
+# program path against the directory holding .cargo/. That matters because cargo invokes the runner
+# from the *crate* being tested (gm8emulator/), not from this workspace root -- a cwd-relative path
+# looks correct and silently resolves one directory too deep. Hence the shebang on the script and
+# its executable bit: it is the program here, not an argument to `node`.
+#
+# Scoped to wasm32-wasi alone, so the wasm32-unknown-unknown release build is untouched.
+[target.wasm32-wasi]
+runner = "scripts/wasi-run.mjs"

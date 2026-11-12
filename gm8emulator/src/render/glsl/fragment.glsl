@@ -25,6 +25,10 @@ layout(std140) uniform RenderState {
     float fog_begin;
     float fog_end;
     vec4 fog_colour; // padded vec3
+    // Unused here, but a uniform block has to declare the same members in every stage that names it
+    // -- GLSL links the two by matching the whole block, not per-field. See vertex.glsl.
+    mat4 view;
+    highp int texcoord_source;
 };
 
 uniform sampler2D tex; // can't put this in the state because it's opaque

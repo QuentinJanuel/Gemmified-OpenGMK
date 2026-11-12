@@ -1,14 +1,21 @@
 use crate::{
     render::{
+        BlendType, DepthFunc, Fog, Light, PrimitiveBuilder, PrimitiveShape, PrimitiveType, RendererOptions,
+        RendererTrait, SavedTexture, Scaling, TexcoordSource, Vertex, VertexBuffer,
         atlas::{AtlasBuilder, AtlasRect, AtlasRef},
-        mat4mult, BlendType, Fog, Light, PrimitiveBuilder, PrimitiveShape, PrimitiveType, RendererOptions,
-        RendererTrait, SavedTexture, Scaling, Vertex, VertexBuffer,
+        mat4mult,
     },
     types::Colour,
+    window::{connection::Connection, window::Window},
 };
-use ramen::{connection::Connection, window::Window};
 use rect_packer::DensePacker;
-use std::{any::Any, f64::consts::PI, ffi::CStr, mem::{offset_of, size_of}, ptr};
+use std::{
+    any::Any,
+    f64::consts::PI,
+    ffi::CStr,
+    mem::{offset_of, size_of},
+    ptr,
+};
 
 /// Auto-generated OpenGL bindings from gl_generator
 pub mod gl {
@@ -88,15 +95,37 @@ struct RenderState {
     fog_enabled: GLBool,
     fog_begin: f32,
     fog_end: f32,
+    // std140 puts a vec4 at a 16-byte-aligned offset, which the nine scalars above do not reach on
+    // their own. `#[repr(C)]` aligns `[f32; 4]` to 4, so without this every member from here on sits
+    // 12 bytes short of where the shader reads it. Desktop GL was quietly tolerating that for
+    // `fog_colour`; it stops being survivable now that `texcoord_source` follows, since a garbage
+    // value there would redirect the texture coordinates of *every* draw. See webgl.rs, which hit
+    // this first and where the fix is verified.
+    _pad_fog_colour: [u32; 3],
     fog_colour: [f32; 4],
+    // The view matrix on its own, which the vertex shader needs only for `texcoord_source`: every
+    // generated coordinate is a function of *camera* space, and `viewproj_matrix` cannot be taken
+    // apart again.
+    view_matrix: [f32; 16],
+    // `#[repr(i32)]`, so this is the small integer the shader switches on. Padded because std140
+    // rounds a block up to a multiple of 16 and the CPU-side upload length has to agree.
+    texcoord_source: TexcoordSource,
+    _pad_texcoord_source: [u32; 3],
     // end of shader stuff
     end_of_uniform: (),
-    view_matrix: [f32; 16],
     proj_matrix: [f32; 16],
     alpha_blending: bool,
     blend_mode: (BlendType, BlendType),
+    // Separate factors for the alpha channel, or None to blend it with `blend_mode` like colour.
+    // Only GM8.2's `draw_set_blend_alphamode` sets this.
+    blend_mode_alpha: Option<(BlendType, BlendType)>,
     write_depth: bool,
     culling: bool,
+    cull_clockwise: bool,
+    colour_mask: (bool, bool, bool, bool),
+    depth_func: DepthFunc,
+    depth_bias: f32,
+    depth_range: (f32, f32),
 }
 
 impl Default for RenderState {
@@ -121,6 +150,18 @@ impl Default for RenderState {
             depth_test: false.into(),
             write_depth: false,
             culling: false,
+            cull_clockwise: false,
+            blend_mode_alpha: None,
+            colour_mask: (true, true, true, true),
+            // D3D's default, which is also what the setup below puts GL into. These fields exist
+            // to be diffed against what a draw asks for, so a default disagreeing with the state GL
+            // actually starts in would swallow a change as "already set" -- the setup and this list
+            // have to name the same state. (webgl.rs seeds GL from here instead, via
+            // `apply_render_state_forced`; this file is `#[cfg]`-ed out of the wasm build, so it
+            // gets the same fix by hand rather than the same restructuring.)
+            depth_func: DepthFunc::LessEqual,
+            depth_bias: 0.0,
+            depth_range: (0.0, 1.0),
             fog_enabled: GLBool::False,
             fog_begin: 0.0,
             fog_end: 0.0,
@@ -136,7 +177,10 @@ impl Default for RenderState {
                 padding: 0,
             }; 8],
             viewproj_matrix: identity_matrix.clone(),
+            _pad_fog_colour: [0; 3],
             fog_colour: [0.0; 4],
+            texcoord_source: TexcoordSource::Vertex,
+            _pad_texcoord_source: [0; 3],
             end_of_uniform: (),
         }
     }
@@ -183,6 +227,9 @@ pub struct RendererImpl {
     framebuffer: Framebuffer,
     stored_framebuffer: Option<Framebuffer>,
     zbuf_format: GLint,
+    // Smallest depth difference this framebuffer can resolve, which `set_depth_bias` converts a
+    // D3D-style normalized bias into a count of.
+    depth_unit: f32,
     zbuf_trashed: bool,
     white_pixel: AtlasRect,
     vertex_queue: Vec<Vertex>,
@@ -313,6 +360,21 @@ impl From<BlendType> for GLenum {
     }
 }
 
+impl From<DepthFunc> for GLenum {
+    fn from(func: DepthFunc) -> Self {
+        match func {
+            DepthFunc::Never => gl::NEVER,
+            DepthFunc::Less => gl::LESS,
+            DepthFunc::Equal => gl::EQUAL,
+            DepthFunc::LessEqual => gl::LEQUAL,
+            DepthFunc::Greater => gl::GREATER,
+            DepthFunc::NotEqual => gl::NOTEQUAL,
+            DepthFunc::GreaterEqual => gl::GEQUAL,
+            DepthFunc::Always => gl::ALWAYS,
+        }
+    }
+}
+
 impl From<GLenum> for BlendType {
     fn from(bt: GLenum) -> Self {
         match bt {
@@ -391,7 +453,12 @@ impl ShapeBuilder {
 // the process termination time - but can be quite useful for Debug ones.
 
 impl RendererImpl {
-    pub fn new(options: &RendererOptions, connection: &Connection, window: &Window, clear_colour: Colour) -> Result<Self, String> {
+    pub fn new(
+        options: &RendererOptions,
+        connection: &Connection,
+        window: &Window,
+        clear_colour: Colour,
+    ) -> Result<Self, String> {
         unsafe {
             let imp = native_gl::PlatformImpl::new(connection, window)?;
 
@@ -481,6 +548,10 @@ impl RendererImpl {
             gl.BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
 
             gl.DepthFunc(gl::LEQUAL);
+            // Matches `write_depth: false` above. GL's own default is *enabled*, so without this
+            // the tracked state and GL disagreed and `d3d_set_zwriteenable(false)` could never
+            // take effect -- it looked like a no-op change.
+            gl.DepthMask(gl::FALSE);
 
             // Use DX provoking vertex convention
             gl.ProvokingVertex(gl::FIRST_VERTEX_CONVENTION);
@@ -617,6 +688,7 @@ impl RendererImpl {
                 framebuffer: Framebuffer { texture: framebuffer_texture, zbuf: framebuffer_zbuf, fbo: framebuffer_fbo },
                 stored_framebuffer: None,
                 zbuf_format,
+                depth_unit: if options.zbuf_24 { 1.0 / 16777216.0 } else { 1.0 / 65536.0 },
                 zbuf_trashed: false,
                 white_pixel: Default::default(),
                 vertex_queue: Vec::with_capacity(1536),
@@ -706,9 +778,15 @@ impl RendererImpl {
             self.render_state_updated = false;
             let alpha_blending = self.next_render_state.alpha_blending;
             let blend_mode = self.next_render_state.blend_mode;
+            let blend_mode_alpha = self.next_render_state.blend_mode_alpha;
             let depth_test = self.next_render_state.depth_test;
             let write_depth = self.next_render_state.write_depth;
             let culling = self.next_render_state.culling;
+            let cull_clockwise = self.next_render_state.cull_clockwise;
+            let colour_mask = self.next_render_state.colour_mask;
+            let depth_func = self.next_render_state.depth_func;
+            let depth_bias = self.next_render_state.depth_bias;
+            let depth_range = self.next_render_state.depth_range;
             unsafe {
                 if old_render_state.alpha_blending != alpha_blending {
                     if alpha_blending.into() {
@@ -717,9 +795,14 @@ impl RendererImpl {
                         self.gl.Disable(gl::BLEND);
                     }
                 }
-                if old_render_state.blend_mode != blend_mode {
+                if old_render_state.blend_mode != blend_mode || old_render_state.blend_mode_alpha != blend_mode_alpha {
                     let (src, dst) = blend_mode;
-                    self.gl.BlendFunc(src.into(), dst.into());
+                    match blend_mode_alpha {
+                        Some((src_alpha, dst_alpha)) => {
+                            self.gl.BlendFuncSeparate(src.into(), dst.into(), src_alpha.into(), dst_alpha.into())
+                        },
+                        None => self.gl.BlendFunc(src.into(), dst.into()),
+                    }
                 }
                 if old_render_state.depth_test != depth_test {
                     if depth_test.into() {
@@ -734,6 +817,36 @@ impl RendererImpl {
                     } else {
                         self.gl.Disable(gl::CULL_FACE);
                     }
+                }
+                if old_render_state.cull_clockwise != cull_clockwise {
+                    // GL culls back faces, so which winding is *front* decides which one goes.
+                    // The viewproj matrix flips vertically (see `update_matrix`), which reverses
+                    // screen-space winding, so GL's default front face is D3D's clockwise one --
+                    // that is, `cull_clockwise == false` is already D3D's `D3DCULL_CCW`, the mode
+                    // stock GM8's `d3d_set_culling` means.
+                    self.gl.FrontFace(if cull_clockwise { gl::CW } else { gl::CCW });
+                }
+                if old_render_state.colour_mask != colour_mask {
+                    let (r, g, b, a) = colour_mask;
+                    self.gl.ColorMask(r as _, g as _, b as _, a as _);
+                }
+                if old_render_state.depth_func != depth_func {
+                    self.gl.DepthFunc(depth_func.into());
+                }
+                if old_render_state.depth_bias != depth_bias {
+                    if depth_bias == 0.0 {
+                        self.gl.Disable(gl::POLYGON_OFFSET_FILL);
+                    } else {
+                        self.gl.Enable(gl::POLYGON_OFFSET_FILL);
+                        // D3D's DEPTHBIAS is a constant offset in normalized depth; GL counts the
+                        // same offset in units of the smallest difference the depth buffer can
+                        // resolve. Same quantity, different scale.
+                        self.gl.PolygonOffset(0.0, depth_bias / self.depth_unit);
+                    }
+                }
+                if old_render_state.depth_range != depth_range {
+                    let (near, far) = depth_range;
+                    self.gl.DepthRange(near as _, far as _);
                 }
                 if old_render_state.write_depth != write_depth {
                     self.gl.DepthMask(write_depth as _);
@@ -763,6 +876,20 @@ impl RendererImpl {
     fn push_primitive(&mut self, builder: &PrimitiveBuilder) {
         self.setup_queue(builder.get_atlas_id(), builder.get_shape());
         self.vertex_queue.extend_from_slice(builder.get_vertices());
+    }
+
+    /// `glClear` with `DEPTH_BUFFER_BIT`, forcing the depth write mask on for the duration -- see
+    /// webgl.rs, where this was found: a depth clear is a write, so with the mask off (which is
+    /// every frame's 2D starting state) it silently clears nothing.
+    unsafe fn clear_including_depth(&mut self, mask: u32) {
+        let restore = self.queue_render_state.write_depth;
+        if !restore {
+            self.gl.DepthMask(gl::TRUE);
+        }
+        self.gl.Clear(mask);
+        if !restore {
+            self.gl.DepthMask(gl::FALSE);
+        }
     }
 
     fn draw_buffer(&mut self, atlas_id: u32, shape: PrimitiveShape, buffer: &[Vertex]) {
@@ -1005,6 +1132,17 @@ impl RendererTrait for RendererImpl {
             Ok(sprite)
         } else {
             Ok(AtlasRef(-1))
+        }
+    }
+
+    fn set_sprite_origin(&mut self, atlas_ref: AtlasRef, origin_x: i32, origin_y: i32) {
+        if let Some(rect) = self.get_rect_mut(atlas_ref) {
+            // Same normalization `upload_sprite` applies. A zero-sized rect has no meaningful
+            // origin and would divide by zero, so leave it alone.
+            if rect.w != 0 && rect.h != 0 {
+                rect.origin_x = origin_x as f32 / rect.w as f32;
+                rect.origin_y = origin_y as f32 / rect.h as f32;
+            }
         }
     }
 
@@ -1424,9 +1562,7 @@ impl RendererTrait for RendererImpl {
 
     fn dump_sprite_part(&self, atlas_ref: AtlasRef, part_x: i32, part_y: i32, part_w: i32, part_h: i32) -> Box<[u8]> {
         let rect = match self.get_rect(atlas_ref) {
-            Some(rect) => {
-                AtlasRect { x: rect.x + part_x, y: rect.y + part_y, w: part_w, h: part_h, ..*rect }
-            },
+            Some(rect) => AtlasRect { x: rect.x + part_x, y: rect.y + part_y, w: part_w, h: part_h, ..*rect },
             None => return Box::new([]),
         };
         unsafe {
@@ -1814,9 +1950,7 @@ impl RendererTrait for RendererImpl {
         let depth = self.depth;
 
         // correct for gm offset
-        let correct = |xoff, yoff| {
-            [(xoff-0.5) as f32, (yoff-0.5) as f32, depth]
-        };
+        let correct = |xoff, yoff| [(xoff - 0.5) as f32, (yoff - 0.5) as f32, depth];
 
         // push the vertices
         self.push_primitive(
@@ -1996,11 +2130,7 @@ impl RendererTrait for RendererImpl {
 
     fn reset_primitive_2d(&mut self, ptype: PrimitiveType, atlas_ref: Option<AtlasRef>) {
         let ar = atlas_ref.and_then(|ar| self.get_rect(ar).copied());
-        self.primitive_2d = PrimitiveBuilder::new(
-            ar.unwrap_or(self.white_pixel),
-            ptype,
-            ar.is_some(),
-        );
+        self.primitive_2d = PrimitiveBuilder::new(ar.unwrap_or(self.white_pixel), ptype, ar.is_some());
     }
 
     fn vertex_2d(&mut self, x: f64, y: f64, xtex: f64, ytex: f64, col: i32, alpha: f64) {
@@ -2028,11 +2158,7 @@ impl RendererTrait for RendererImpl {
 
     fn reset_primitive_3d(&mut self, ptype: PrimitiveType, atlas_ref: Option<AtlasRef>) {
         let ar = atlas_ref.and_then(|ar| self.get_rect(ar).copied());
-        self.primitive_3d = PrimitiveBuilder::new(
-            ar.unwrap_or(self.white_pixel),
-            ptype,
-            ar.is_some(),
-        );
+        self.primitive_3d = PrimitiveBuilder::new(ar.unwrap_or(self.white_pixel), ptype, ar.is_some());
     }
 
     fn vertex_3d(
@@ -2127,6 +2253,31 @@ impl RendererTrait for RendererImpl {
         self.render_state_updated = true;
     }
 
+    fn set_blend_mode_alpha(&mut self, modes: Option<(BlendType, BlendType)>) {
+        self.next_render_state.blend_mode_alpha = modes;
+        self.render_state_updated = true;
+    }
+
+    fn set_colour_mask(&mut self, r: bool, g: bool, b: bool, a: bool) {
+        self.next_render_state.colour_mask = (r, g, b, a);
+        self.render_state_updated = true;
+    }
+
+    fn set_depth_func(&mut self, func: DepthFunc) {
+        self.next_render_state.depth_func = func;
+        self.render_state_updated = true;
+    }
+
+    fn set_depth_bias(&mut self, bias: f64) {
+        self.next_render_state.depth_bias = bias as f32;
+        self.render_state_updated = true;
+    }
+
+    fn set_depth_range(&mut self, near: f64, far: f64) {
+        self.next_render_state.depth_range = (near as f32, far as f32);
+        self.render_state_updated = true;
+    }
+
     fn get_pixel_interpolation(&self) -> bool {
         self.next_render_state.interpolate_pixels.into()
     }
@@ -2166,6 +2317,14 @@ impl RendererTrait for RendererImpl {
         self.next_render_state.view_matrix = view;
         self.next_render_state.proj_matrix = proj;
         self.render_state_updated = true;
+    }
+
+    fn get_view_matrix(&self) -> [f32; 16] {
+        self.next_render_state.view_matrix
+    }
+
+    fn get_proj_matrix(&self) -> [f32; 16] {
+        self.next_render_state.proj_matrix
     }
 
     fn get_model_matrix(&self) -> [f32; 16] {
@@ -2248,11 +2407,30 @@ impl RendererTrait for RendererImpl {
         }
     }
 
+    fn get_viewport(&self) -> (i32, i32, i32, i32) {
+        let mut viewport = [0; 4];
+        unsafe {
+            self.gl.GetIntegerv(gl::VIEWPORT, viewport.as_mut_ptr());
+        }
+        (viewport[0], viewport[1], viewport[2], viewport[3])
+    }
+
+    fn set_viewport(&mut self, x: i32, y: i32, w: i32, h: i32) {
+        // Anything already queued was drawn under the old viewport, so it has to go out first --
+        // unlike the `RenderState` fields, this is applied immediately rather than at the next
+        // state update, since the viewport is also what `update_matrix` reads.
+        self.flush_queue();
+        unsafe {
+            self.gl.Viewport(x, y, w, h);
+            self.gl.Scissor(x, y, w, h);
+        }
+    }
+
     fn clear_view(&mut self, colour: Colour, alpha: f64) {
         self.flush_queue();
         unsafe {
             self.gl.ClearColor(colour.r as f32, colour.g as f32, colour.b as f32, alpha as f32);
-            self.gl.Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
+            self.clear_including_depth(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
             assert_eq!(self.gl.GetError(), 0);
         }
     }
@@ -2266,12 +2444,12 @@ impl RendererTrait for RendererImpl {
         }
     }
 
+    /// Clears the depth buffer, **unconditionally** -- see webgl.rs for why a `using_3d` condition
+    /// here would be the wrong question to ask.
     fn clear_zbuf(&mut self) {
-        if self.using_3d {
-            self.flush_queue();
-            unsafe {
-                self.gl.Clear(gl::DEPTH_BUFFER_BIT);
-            }
+        self.flush_queue();
+        unsafe {
+            self.clear_including_depth(gl::DEPTH_BUFFER_BIT);
         }
     }
 
@@ -2282,6 +2460,11 @@ impl RendererTrait for RendererImpl {
     fn set_3d(&mut self, use_3d: bool) {
         self.using_3d = use_3d;
         self.set_depth_test(use_3d);
+        // `d3d_start` is hidden-surface removal, which in D3D is ZENABLE *and* ZWRITEENABLE; only
+        // the first was set here. Harmless while GL's depth mask was left enabled behind the
+        // tracked state's back; now that the two agree, this has to turn writing back on or
+        // nothing in a 3D scene would occlude anything.
+        self.set_write_depth(use_3d);
         self.set_perspective(use_3d);
     }
 
@@ -2318,6 +2501,11 @@ impl RendererTrait for RendererImpl {
 
     fn set_culling(&mut self, culling: bool) {
         self.next_render_state.culling = culling;
+        self.render_state_updated = true;
+    }
+
+    fn set_cull_clockwise(&mut self, clockwise: bool) {
+        self.next_render_state.cull_clockwise = clockwise;
         self.render_state_updated = true;
     }
 
@@ -2429,6 +2617,15 @@ impl RendererTrait for RendererImpl {
                 self.next_render_state.lights[id].range = range;
             },
         }
+        self.render_state_updated = true;
+    }
+
+    fn get_texcoord_source(&self) -> TexcoordSource {
+        self.next_render_state.texcoord_source
+    }
+
+    fn set_texcoord_source(&mut self, source: TexcoordSource) {
+        self.next_render_state.texcoord_source = source;
         self.render_state_updated = true;
     }
 

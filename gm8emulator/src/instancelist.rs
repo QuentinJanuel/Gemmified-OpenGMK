@@ -5,9 +5,9 @@ use crate::{
     types::ID,
 };
 use serde::{
+    Deserialize, Deserializer, Serialize, Serializer,
     de::{SeqAccess, Visitor},
     ser::{SerializeSeq, SerializeStruct},
-    Deserialize, Deserializer, Serialize, Serializer,
 };
 use std::{collections::HashMap, fmt};
 
@@ -304,6 +304,17 @@ impl InstanceList {
             position: 0,
             object_index: object_index,
         }
+    }
+
+    /// Raw handles of every instance ever created of this object index, in creation order,
+    /// including inactive ones (unlike `iter_by_object`, this doesn't filter by `InstanceState` --
+    /// callers that care should check `state` themselves). Used by `run_collisions`'s spatial
+    /// grid to incrementally "top up" from wherever it last left off, since `object_id_map`'s
+    /// per-object `Vec` is append-only for the duration of a single `frame()` call (nothing
+    /// shrinks or renumbers it until `remove_with`/`remove_as_vec` runs, both only ever called
+    /// after collision events have finished for the frame).
+    pub fn object_id_map_slice(&self, object_index: ID) -> &[usize] {
+        self.object_id_map.get(&object_index).map(Vec::as_slice).unwrap_or(&[])
     }
 
     pub fn insert(&mut self, el: Instance) -> usize {

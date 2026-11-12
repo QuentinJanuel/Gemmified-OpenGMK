@@ -1,3 +1,88 @@
+# Gemmified-OpenGMK
+
+This is a fork of OpenGMK that runs GameMaker 8 games in the browser. It compiles the OpenGMK
+emulator to WebAssembly and packages it as a plugin for any host that speaks the GEMS plugin
+protocol. The upstream project's README follows [below](#opengmk).
+
+## Install
+
+Give a GEMS host this update feed:
+
+```
+https://gemmified-opengmk.dappermink.me/latest.json
+```
+
+The feed lists only the latest release, and the host uses it to install the engine and keep it
+up to date. It can also carry an optional top-level `icon`, an https URL to
+`https://gemmified-opengmk.dappermink.me/icon.png`.
+
+Each `v<version>` tag publishes the plugin as
+`https://gemmified-opengmk.dappermink.me/<version>/opengmk-<version>.zip` and makes it the only
+version in the feed. Builds of earlier versions are then deleted. The SoundFont that MIDI music
+plays through (about 31 MiB) is not in the zip. It is published next to the zip, at
+`<version>/GeneralUser-GS.sf2`, and the manifest lists it as an optional asset with that `url`.
+If a host doesn't serve it, the game still runs but MIDI music stays silent.
+
+## The plugin
+
+A plugin is a directory with two parts:
+
+- `plugin.json`: the manifest. It holds `id`, `version`, `apiVersion`, `entry`, `formats`,
+  `updates` (the feed above), `assets` (the SoundFont) and `capabilities` (the settings the
+  engine reads). `scripts/write-manifest.mjs` writes it from `host/plugin.js`, so the two always
+  agree.
+- `host.js` (built from `host/plugin.js`): the entry module. Its default export has an
+  `accepts(files)` method, which picks a game's `.exe`, and a `create(host)` method, which
+  returns a session.
+
+The session lives in the `host` crate, which runs in the page. It owns the `AudioContext`, the
+`Worker` and the shared buffer that blocking GML dialogs are answered through. The engine
+(`gm8emulator`) runs in that worker (`host/worker.js`), and `gm8emulator/src/gems.rs` is its side
+of the message protocol between the two. The host page must be cross-origin isolated, because
+the dialogs use `SharedArrayBuffer`.
+
+## Build and test
+
+You need Rust 1.77 (from `rust-toolchain.toml`) with the `wasm32-unknown-unknown` and
+`wasm32-wasi` targets, the `wasm-bindgen` CLI matching `Cargo.lock` (0.2.114), Node 22, and pnpm.
+
+```sh
+pnpm install
+pnpm build      # fetches and checks the SoundFont, builds both wasm modules into dist/
+pnpm package    # the plugin directory, in plugin/
+pnpm lint       # clippy
+pnpm test       # sm3 natively, gm8emulator on wasm32-wasi via Node, the release scripts
+pnpm format:check   # needs the nightly toolchain pinned in package.json
+```
+
+The web build always uses `--no-default-features`, which leaves out the TAS tooling. The
+desktop build and the TAS framework described below come from upstream. This fork keeps the
+code they share with the web build plausibly correct, but neither builds nor tests them. Building
+GM8Decompiler, which the upstream README below describes, now happens in gm8-lib.
+
+## Relation to OpenGMK
+
+This repository is a fork of [OpenGMK](https://github.com/OpenGMK/OpenGMK). It carries upstream's
+history unchanged, plus a single commit on top. `git diff upstream/master` lists everything this
+fork changes. Here is a summary:
+
+- `gm8emulator` gains a wasm32 build: WebGL2 rendering, Web Audio with MIDI and tracker music,
+  a virtual filesystem, and stand-ins for many GM8 extension DLLs.
+- `sm3` is new. It translates Direct3D 9 shader bytecode to GLSL ES 3.00, for GM8.2's `shader_*`
+  functions.
+- `host` is new. It is the page side of the plugin.
+- `gm8exe`, `gml-parser` and `gm8decompiler` now live in
+  [gm8-lib](https://github.com/QuentinJanuel/gm8-lib), a GameMaker 8 file library extracted from
+  OpenGMK. The emulator depends on it at a pinned commit.
+
+## Licence
+
+This fork is licensed GPL-2.0-only, the same as OpenGMK. See [LICENCE.md](LICENCE.md) and
+[NOTICE](NOTICE). The GeneralUser GS SoundFont has its own licence, in
+[assets/soundfont/LICENSE.txt](assets/soundfont/LICENSE.txt).
+
+---
+
 # OpenGMK
 
 **OpenGMK** is a modern rewrite of the proprietary GameMaker Classic engines,

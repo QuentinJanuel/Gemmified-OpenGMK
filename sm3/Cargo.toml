@@ -1,0 +1,10 @@
+[package]
+name = "sm3"
+version = "0.1.0"
+edition = "2021"
+description = "Direct3D 9 shader model 3 bytecode to GLSL ES 3.00, for running GM8.2's shaders in WebGL2"
+
+# Deliberately empty, and worth keeping that way. Everything this crate does is reading
+# little-endian words and writing text, and the wasm32 target it ultimately feeds cannot build
+# anything that needs a C toolchain -- see the workspace README.
+[dependencies]

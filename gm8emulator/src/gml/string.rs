@@ -1,5 +1,5 @@
 use encoding_rs::Encoding;
-use serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 use std::{borrow::Cow, fmt, rc::Rc};
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]

@@ -1,11 +1,16 @@
 //! Game rendering functionality
 
 pub mod atlas;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod opengl;
+#[cfg(target_arch = "wasm32")]
+pub mod webgl;
 
-use crate::types::Colour;
+use crate::{
+    types::Colour,
+    window::{connection::Connection, window::Window},
+};
 use atlas::{AtlasRect, AtlasRef};
-use ramen::{connection::Connection, window::Window};
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 
@@ -54,6 +59,87 @@ pub enum BlendType {
     DestColour,
     InvDestColour,
     SrcAlphaSaturate,
+}
+
+/// How a fragment's depth is compared against the z-buffer, as `d3d_set_zcomp_mode` selects it.
+/// Stock GM8 never changes it -- only the GM8.2 extension can -- so until one does, the context
+/// keeps whichever comparison it starts with.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DepthFunc {
+    Never,
+    Less,
+    Equal,
+    LessEqual,
+    Greater,
+    NotEqual,
+    GreaterEqual,
+    Always,
+}
+
+impl From<i32> for DepthFunc {
+    /// The numbers are D3D9's `D3DCMP_*`, which is what a game passes: GM8.2's `cm_*` constants
+    /// are those values verbatim. Anything else keeps the default rather than inventing a mode.
+    fn from(cmp: i32) -> Self {
+        match cmp {
+            1 => DepthFunc::Never,
+            2 => DepthFunc::Less,
+            3 => DepthFunc::Equal,
+            5 => DepthFunc::Greater,
+            6 => DepthFunc::NotEqual,
+            7 => DepthFunc::GreaterEqual,
+            8 => DepthFunc::Always,
+            _ => DepthFunc::LessEqual,
+        }
+    }
+}
+
+/// Where the fixed-function pipeline gets stage 0's texture coordinates, as GM8.2's
+/// `texture_set_mode` selects it. Stock GM8 has no such function, so a vertex's own coordinates are
+/// the only source until the extension asks for another.
+///
+/// This matters more than a texture-coordinate tweak usually would: a model saved with
+/// `d3d_model_save` stores *no* texture coordinates for a `vertex_normal` command, so a game
+/// texturing one this way has nothing else to sample by. renex engine's teapot boss is exactly that
+/// -- 7086 normals, every UV zero, and `tm_spheremap` supplying all of them.
+///
+/// The discriminants are what the vertex shader switches on, so this goes into the uniform block
+/// as-is. They are deliberately *not* D3D's `D3DTSS_TCI_*` values -- see `from_d3d_tci`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(i32)]
+pub enum TexcoordSource {
+    /// `tm_regular` -- the vertex's own texture coordinates.
+    Vertex = 0,
+    /// `tm_csnormal` -- the camera-space vertex normal.
+    CameraSpaceNormal = 1,
+    /// `tm_csposition` -- the camera-space vertex position.
+    CameraSpacePosition = 2,
+    /// `tm_csreflect` -- the camera-space reflection vector.
+    CameraSpaceReflect = 3,
+    /// `tm_spheremap` -- sphere-map coordinates derived from the camera-space normal.
+    SphereMap = 4,
+}
+
+impl TexcoordSource {
+    /// Reads D3D9's `D3DTSS_TEXCOORDINDEX`, which is what a game passes: GM8.2's `tm_*` constants
+    /// are the `D3DTSS_TCI_*` values verbatim, and `texture_set_mode` is a bare
+    /// `SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, mode)`.
+    ///
+    /// The *low* half of that state picks which coordinate set a passthrough reads. This renderer's
+    /// vertices carry exactly one, so it is masked off rather than misread as a mode -- which also
+    /// makes `texture_set_mode(0)` and `texture_set_mode(1)` both mean "the vertex's own", as they
+    /// do on D3D for a single-texcoord vertex format.
+    ///
+    /// An unknown generator is `Vertex` rather than a guess: drawing with the model's own
+    /// coordinates is what the game had before it asked, and is never worse than inventing a mapping.
+    pub fn from_d3d_tci(mode: i32) -> Self {
+        match mode as u32 & 0xffff_0000 {
+            0x0001_0000 => TexcoordSource::CameraSpaceNormal,
+            0x0002_0000 => TexcoordSource::CameraSpacePosition,
+            0x0003_0000 => TexcoordSource::CameraSpaceReflect,
+            0x0004_0000 => TexcoordSource::SphereMap,
+            _ => TexcoordSource::Vertex,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -149,6 +235,18 @@ impl PrimitiveBuilder {
         self
     }
 
+    /// Keeps texture coordinates even though this primitive has no texture.
+    ///
+    /// For a *drawn* primitive, discarding them is right: NaN is how the built-in program is told
+    /// there is no texture. For one being baked into a model's cache it is destructive, because the
+    /// cache outlives the draw that built it and the texture comes from each later draw -- and GM8.2
+    /// builds every cache untextured, since `d3d_model_bake(m)` is defined as
+    /// `d3d_model_draw(m,0,0,0,-1)`. Whether the draw has a texture is decided per draw instead; see
+    /// `draw_buffers`.
+    pub fn keep_tex_coords(&mut self) {
+        self.textured = true;
+    }
+
     fn push_vertex(&mut self, pos: [f32; 3], tex_coord: [f32; 2], blend: [f32; 4], normal: [f32; 3]) -> &mut Self {
         let tex_coord = if self.textured { tex_coord } else { [f32::NAN; 2] };
         self.push_vertex_raw(Vertex { pos, tex_coord, blend, normal, atlas_xywh: self.atlas_ref.into() });
@@ -175,7 +273,12 @@ pub struct VertexBuffer {
     tris: Vec<Vertex>,
 }
 
-pub struct Renderer(Box<dyn RendererTrait>);
+pub struct Renderer(
+    Box<dyn RendererTrait>,
+    /// Whether primitives must keep their texture coordinates even when begun with no texture --
+    /// set while a model's vertex cache is being filled. See `keep_tex_coords`.
+    bool,
+);
 
 pub trait RendererTrait {
     fn as_any(&self) -> &dyn Any;
@@ -191,6 +294,13 @@ pub trait RendererTrait {
     ) -> Result<AtlasRef, String>;
     fn duplicate_sprite(&mut self, atlas_ref: AtlasRef) -> Result<AtlasRef, String>;
     fn delete_sprite(&mut self, atlas_ref: AtlasRef);
+
+    /// Moves a sprite's drawing origin, which `upload_sprite` otherwise fixes for good at upload
+    /// time. A sprite's origin is stored twice: here (normalized by the sprite's size, and used for
+    /// *drawing*) and on the `Sprite` asset (in pixels, and used for *collision*). `sprite_set_offset`
+    /// can move it at runtime, so it has to write through to both or the two disagree — a sprite
+    /// drawn one place and collided somewhere else.
+    fn set_sprite_origin(&mut self, atlas_ref: AtlasRef, origin_x: i32, origin_y: i32);
 
     /// Resizes the rendering target. Usually called when the window has been resized.
     /// The contents of the old framebuffer will be copied to the new one. If `store` is true, the old one
@@ -294,10 +404,12 @@ pub trait RendererTrait {
         y3: f64,
         x4: f64,
         y4: f64,
-        alpha: f64
+        alpha: f64,
     );
     fn set_view_matrix(&mut self, view: [f32; 16]);
     fn set_viewproj_matrix(&mut self, view: [f32; 16], proj: [f32; 16]);
+    fn get_view_matrix(&self) -> [f32; 16];
+    fn get_proj_matrix(&self) -> [f32; 16];
     fn get_model_matrix(&self) -> [f32; 16];
     fn set_model_matrix(&mut self, model: [f32; 16]);
     fn mult_model_matrix(&mut self, model: [f32; 16]);
@@ -315,6 +427,10 @@ pub trait RendererTrait {
         port_w: i32,
         port_h: i32,
     );
+    /// The part of the drawing buffer being rendered into, as (x, y, width, height). `set_view`
+    /// sets this from the room's view port; `d3d_set_viewport` overrides it directly.
+    fn get_viewport(&self) -> (i32, i32, i32, i32);
+    fn set_viewport(&mut self, x: i32, y: i32, w: i32, h: i32);
     fn flush_queue(&mut self);
     fn present(&mut self, window_width: u32, window_height: u32, scaling: Scaling);
     fn draw_stored(&mut self, target_x: i32, target_y: i32, width: u32, height: u32);
@@ -334,6 +450,18 @@ pub trait RendererTrait {
     fn set_colour_blending(&mut self, modulate: bool);
     fn get_blend_mode(&self) -> (BlendType, BlendType);
     fn set_blend_mode(&mut self, src: BlendType, dst: BlendType);
+    /// The blend factors used for the alpha channel alone. `None` -- the state every stock GM8
+    /// game stays in -- blends alpha with the same factors as colour.
+    fn set_blend_mode_alpha(&mut self, modes: Option<(BlendType, BlendType)>);
+    /// Which channels a draw is allowed to write. Used to punch alpha into a surface without
+    /// disturbing its colour, and vice versa.
+    fn set_colour_mask(&mut self, r: bool, g: bool, b: bool, a: bool);
+    fn set_depth_func(&mut self, func: DepthFunc);
+    /// A constant added to a fragment's depth before it is compared, in depth-buffer units, to
+    /// keep coplanar polygons from z-fighting.
+    fn set_depth_bias(&mut self, bias: f64);
+    /// The depth range a drawn fragment's z is mapped into, both within 0..1.
+    fn set_depth_range(&mut self, near: f64, far: f64);
     fn get_pixel_interpolation(&self) -> bool;
     fn set_pixel_interpolation(&mut self, lerping: bool);
     fn get_texture_repeat(&self) -> bool;
@@ -515,6 +643,9 @@ pub trait RendererTrait {
     fn set_write_depth(&mut self, write_depth: bool);
     fn get_culling(&self) -> bool;
     fn set_culling(&mut self, culling: bool);
+    /// Which winding culling throws away. `false` -- what stock GM8's `d3d_set_culling` means --
+    /// culls counter-clockwise faces, matching D3D's `D3DCULL_CCW`.
+    fn set_cull_clockwise(&mut self, clockwise: bool);
     fn get_perspective(&self) -> bool;
     fn set_perspective(&mut self, perspective: bool);
     fn get_fog(&self) -> Option<Fog>;
@@ -529,7 +660,126 @@ pub trait RendererTrait {
     fn set_lights(&mut self, lights: [(bool, Light); 8]);
     fn set_light_enabled(&mut self, id: usize, enabled: bool);
     fn set_light(&mut self, id: usize, light: Light);
+    fn get_texcoord_source(&self) -> TexcoordSource;
+    fn set_texcoord_source(&mut self, source: TexcoordSource);
+
+    // -- game-supplied shaders (GM8.2's `shader_*` family) ---------------------------------------
+    //
+    // Every method here has an inert default, so a backend that has not implemented custom shaders
+    // needs no changes at all and a game asking for one is told no. That is not politeness: this
+    // file's trait is shared with `render/opengl.rs`, which is `#[cfg]`-ed out of the wasm build, so
+    // a required method there would be a change the wasm build cannot check.
+
+    /// Compiles one stage from GLSL. `Err` is the compile log, which is the only useful thing to
+    /// report when a translated shader turns out not to be valid after all.
+    fn create_shader(&mut self, _stage: ShaderStage, _glsl: &str) -> Result<ShaderRef, String> {
+        Err("this renderer does not support custom shaders".into())
+    }
+
+    fn delete_shader(&mut self, _shader: ShaderRef) {}
+
+    /// Sets, or with `None` clears, one stage. D3D9 binds the two independently; the pair is only
+    /// resolved into a linked program at draw time.
+    fn set_shader_stage(&mut self, _stage: ShaderStage, _shader: Option<ShaderRef>) {}
+
+    fn get_shader_stage(&self, _stage: ShaderStage) -> Option<ShaderRef> {
+        None
+    }
+
+    /// Writes one `c#` constant register. Registers rather than named uniforms because that is what
+    /// GM8.2's API sets -- see `sm3`'s `glsl` module.
+    fn set_shader_constant(&mut self, _stage: ShaderStage, _register: u32, _value: [f32; 4]) {}
+
+    /// Binds a texture to sampler register `s#` of one stage. `None` leaves it reading whatever the
+    /// draw itself supplies, which for pixel stage 0 is the sprite or surface being drawn -- the
+    /// same thing D3D does when a game sets no texture of its own.
+    ///
+    /// The two stages have separate sampler registers in D3D9 (`texture_set_stage` against
+    /// `texture_set_stage_vertex`), so `s0` means two different things depending on `kind`.
+    fn set_shader_sampler(&mut self, _kind: ShaderStage, _stage: u32, _texture: Option<AtlasRef>) {}
+
+    /// Per-stage sampler state: how a stage filters, and whether it wraps. `None` leaves whichever
+    /// is not being set alone.
+    ///
+    /// Per *stage*, not per texture, which is the distinction D3D draws and GL only gained with
+    /// sampler objects -- the same texture read through two stages can be filtered two ways.
+    fn set_shader_sampler_state(
+        &mut self,
+        _kind: ShaderStage,
+        _stage: u32,
+        _interpolate: Option<bool>,
+        _repeat: Option<(bool, bool)>,
+    ) {
+    }
+
+    /// Draws a game-supplied vertex buffer through the shader it set, without decoding it.
+    ///
+    /// Returns `false` when there is no custom program to draw with, which is the caller's cue to
+    /// fall back to unpacking the buffer into immediate-mode calls -- the fixed-function pipeline
+    /// has no other way to read a game's own vertex declaration.
+    fn draw_vertex_streams(
+        &mut self,
+        _streams: &[VertexStream],
+        _indices: Option<IndexData>,
+        _primitive: PrimitiveType,
+        _vertex_count: usize,
+        _instance_count: usize,
+        _texture: Option<AtlasRef>,
+    ) -> bool {
+        false
+    }
+
+    /// The combined view-projection matrix *as the built-in program receives it*, including the
+    /// vertical flip and half-pixel shift this renderer folds in for GL.
+    ///
+    /// A custom vertex shader writes `gl_Position` from a matrix the game handed it, so unless that
+    /// matrix carries the same flip, everything drawn through the shader comes out mirrored against
+    /// everything drawn without one. Handing back the renderer's own matrix is what keeps the two
+    /// halves of a frame in the same space.
+    fn get_viewproj_matrix(&self) -> [f32; 16] {
+        let mut identity = [0.0; 16];
+        for i in 0..4 {
+            identity[i * 5] = 1.0;
+        }
+        identity
+    }
 }
+
+/// One vertex stream of a game-supplied draw: the raw bytes, how far apart consecutive entries
+/// are, and which declared elements are read out of it.
+///
+/// Several streams because D3D9's vertex declaration is per-stream and GM8.2 exposes that: the
+/// shadow-volume pass in Delicious Level Design Contest puts one unit quad in stream 0 and a
+/// per-light transform in stream 1, so `divisor` is what turns the second into instancing.
+pub struct VertexStream<'a> {
+    pub data: &'a [u8],
+    pub stride: usize,
+    /// `(vf_type, vf_usage, usage index, byte offset within the stride)`, in declaration order.
+    ///
+    /// The usage *index* matters as much as the usage: a declaration may carry two positions -- one
+    /// per vertex and one per instance -- and `position0` and `position1` are what tells the shader
+    /// which is which. D3D numbers them by order of appearance, so that is how they are counted.
+    pub elements: &'a [(i32, i32, u8, usize)],
+    /// 0 advances per vertex, 1 per instance.
+    pub divisor: u32,
+}
+
+/// An index buffer: the raw bytes, and whether they are 32-bit rather than 16-bit.
+pub struct IndexData<'a> {
+    pub data: &'a [u8],
+    pub wide: bool,
+}
+
+/// Which half of the pipeline a shader is.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ShaderStage {
+    Vertex,
+    Pixel,
+}
+
+/// A compiled shader stage. Opaque, and only meaningful to the renderer that made it.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Serialize, Deserialize)]
+pub struct ShaderRef(pub i32);
 
 pub struct RendererOptions {
     pub size: (u32, u32),
@@ -552,10 +802,38 @@ impl Default for RendererOptions {
 }
 
 impl Renderer {
-    pub fn new(backend: (), connection: &Connection, options: &RendererOptions, window: &Window, clear_colour: Colour) -> Result<Self, String> {
-        Ok(Self(Box::new(match backend {
-            () => opengl::RendererImpl::new(options, connection, window, clear_colour)?,
-        })))
+    pub fn new(
+        backend: (),
+        connection: &Connection,
+        options: &RendererOptions,
+        window: &Window,
+        clear_colour: Colour,
+    ) -> Result<Self, String> {
+        Ok(Self(
+            Box::new(match backend {
+                #[cfg(not(target_arch = "wasm32"))]
+                () => opengl::RendererImpl::new(options, connection, window, clear_colour)?,
+                #[cfg(target_arch = "wasm32")]
+                () => webgl::RendererImpl::new(options, connection, window, clear_colour)?,
+            }),
+            false,
+        ))
+    }
+
+    /// Makes every primitive begun from now on keep its texture coordinates, whether or not it was
+    /// begun with a texture.
+    ///
+    /// A primitive with no texture normally has its coordinates replaced with NaN, which is how the
+    /// built-in fragment shader is told there is nothing to sample. That is right for a draw and
+    /// wrong for a *model cache*, which outlives the draw that filled it: `d3d_model_draw` takes its
+    /// texture per draw, and GM8.2 fills every cache with no texture at all, since `d3d_model_bake`
+    /// is defined as `d3d_model_draw(m,0,0,0,-1)`. Whether a draw has a texture is decided per draw
+    /// instead -- see `draw_buffers`.
+    ///
+    /// Set here rather than at each `reset_primitive_3d`, because a model's shapes (`d3d_model_block`
+    /// and friends) begin primitives of their own several times each, deep inside `model.rs`.
+    pub fn keep_tex_coords(&mut self, keep: bool) {
+        self.1 = keep;
     }
 
     pub fn max_texture_size(&self) -> u32 {
@@ -579,6 +857,10 @@ impl Renderer {
 
     pub fn duplicate_sprite(&mut self, atlas_ref: AtlasRef) -> Result<AtlasRef, String> {
         self.0.duplicate_sprite(atlas_ref)
+    }
+
+    pub fn set_sprite_origin(&mut self, atlas_ref: AtlasRef, origin_x: i32, origin_y: i32) {
+        self.0.set_sprite_origin(atlas_ref, origin_x, origin_y)
     }
 
     pub fn delete_sprite(&mut self, atlas_ref: AtlasRef) {
@@ -670,9 +952,7 @@ impl Renderer {
         y4: f64,
         alpha: f64,
     ) {
-        self.0.draw_sprite_pos(
-            texture, x1, y1, x2, y2, x3, y3, x4, y4, alpha
-        )
+        self.0.draw_sprite_pos(texture, x1, y1, x2, y2, x3, y3, x4, y4, alpha)
     }
 
     pub fn set_view_matrix(&mut self, view: [f32; 16]) {
@@ -681,6 +961,14 @@ impl Renderer {
 
     pub fn set_viewproj_matrix(&mut self, view: [f32; 16], proj: [f32; 16]) {
         self.0.set_viewproj_matrix(view, proj)
+    }
+
+    pub fn get_view_matrix(&self) -> [f32; 16] {
+        self.0.get_view_matrix()
+    }
+
+    pub fn get_proj_matrix(&self) -> [f32; 16] {
+        self.0.get_proj_matrix()
     }
 
     pub fn get_model_matrix(&self) -> [f32; 16] {
@@ -716,6 +1004,14 @@ impl Renderer {
         port_h: i32,
     ) {
         self.0.set_view(src_x, src_y, src_w, src_h, src_angle, port_x, port_y, port_w, port_h)
+    }
+
+    pub fn get_viewport(&self) -> (i32, i32, i32, i32) {
+        self.0.get_viewport()
+    }
+
+    pub fn set_viewport(&mut self, x: i32, y: i32, w: i32, h: i32) {
+        self.0.set_viewport(x, y, w, h)
     }
 
     pub fn draw_sprite_partial(
@@ -847,7 +1143,12 @@ impl Renderer {
     }
 
     pub fn reset_primitive_3d(&mut self, ptype: PrimitiveType, atlas_ref: Option<AtlasRef>) {
-        self.0.reset_primitive_3d(ptype, atlas_ref)
+        self.0.reset_primitive_3d(ptype, atlas_ref);
+        if self.1 {
+            let mut prim = self.0.get_primitive_3d();
+            prim.keep_tex_coords();
+            self.0.set_primitive_3d(prim);
+        }
     }
 
     pub fn vertex_3d(
@@ -1000,6 +1301,76 @@ impl Renderer {
         self.0.set_blend_mode(src, dst)
     }
 
+    pub fn set_blend_mode_alpha(&mut self, modes: Option<(BlendType, BlendType)>) {
+        self.0.set_blend_mode_alpha(modes)
+    }
+
+    pub fn set_colour_mask(&mut self, r: bool, g: bool, b: bool, a: bool) {
+        self.0.set_colour_mask(r, g, b, a)
+    }
+
+    pub fn set_depth_func(&mut self, func: DepthFunc) {
+        self.0.set_depth_func(func)
+    }
+
+    pub fn set_depth_bias(&mut self, bias: f64) {
+        self.0.set_depth_bias(bias)
+    }
+
+    pub fn create_shader(&mut self, stage: ShaderStage, glsl: &str) -> Result<ShaderRef, String> {
+        self.0.create_shader(stage, glsl)
+    }
+
+    pub fn delete_shader(&mut self, shader: ShaderRef) {
+        self.0.delete_shader(shader)
+    }
+
+    pub fn set_shader_stage(&mut self, stage: ShaderStage, shader: Option<ShaderRef>) {
+        self.0.set_shader_stage(stage, shader)
+    }
+
+    pub fn get_shader_stage(&self, stage: ShaderStage) -> Option<ShaderRef> {
+        self.0.get_shader_stage(stage)
+    }
+
+    pub fn set_shader_constant(&mut self, stage: ShaderStage, register: u32, value: [f32; 4]) {
+        self.0.set_shader_constant(stage, register, value)
+    }
+
+    pub fn set_shader_sampler(&mut self, kind: ShaderStage, stage: u32, texture: Option<AtlasRef>) {
+        self.0.set_shader_sampler(kind, stage, texture)
+    }
+
+    pub fn set_shader_sampler_state(
+        &mut self,
+        kind: ShaderStage,
+        stage: u32,
+        interpolate: Option<bool>,
+        repeat: Option<(bool, bool)>,
+    ) {
+        self.0.set_shader_sampler_state(kind, stage, interpolate, repeat)
+    }
+
+    pub fn get_viewproj_matrix(&self) -> [f32; 16] {
+        self.0.get_viewproj_matrix()
+    }
+
+    pub fn draw_vertex_streams(
+        &mut self,
+        streams: &[VertexStream],
+        indices: Option<IndexData>,
+        primitive: PrimitiveType,
+        vertex_count: usize,
+        instance_count: usize,
+        texture: Option<AtlasRef>,
+    ) -> bool {
+        self.0.draw_vertex_streams(streams, indices, primitive, vertex_count, instance_count, texture)
+    }
+
+    pub fn set_depth_range(&mut self, near: f64, far: f64) {
+        self.0.set_depth_range(near, far)
+    }
+
     pub fn get_pixel_interpolation(&self) -> bool {
         self.0.get_pixel_interpolation()
     }
@@ -1072,6 +1443,10 @@ impl Renderer {
         self.0.set_culling(culling)
     }
 
+    pub fn set_cull_clockwise(&mut self, clockwise: bool) {
+        self.0.set_cull_clockwise(clockwise)
+    }
+
     pub fn get_perspective(&self) -> bool {
         self.0.get_perspective()
     }
@@ -1126,6 +1501,14 @@ impl Renderer {
 
     pub fn set_light(&mut self, id: usize, light: Light) {
         self.0.set_light(id, light)
+    }
+
+    pub fn get_texcoord_source(&self) -> TexcoordSource {
+        self.0.get_texcoord_source()
+    }
+
+    pub fn set_texcoord_source(&mut self, source: TexcoordSource) {
+        self.0.set_texcoord_source(source)
     }
 
     pub fn present(&mut self, window_width: u32, window_height: u32, scaling: Scaling) {
@@ -1229,7 +1612,7 @@ pub struct RendererState {
 }
 
 /// Multiply two mat4's together
-fn mat4mult(m1: [f32; 16], m2: [f32; 16]) -> [f32; 16] {
+pub fn mat4mult(m1: [f32; 16], m2: [f32; 16]) -> [f32; 16] {
     [
         (m1[0] * m2[0]) + (m1[1] * m2[4]) + (m1[2] * m2[8]) + (m1[3] * m2[12]),
         (m1[0] * m2[1]) + (m1[1] * m2[5]) + (m1[2] * m2[9]) + (m1[3] * m2[13]),

@@ -3,7 +3,7 @@
 use super::dll;
 use libffi::middle as ffi;
 use std::{
-    ffi::{c_void, CStr, CString, OsStr, OsString},
+    ffi::{CStr, CString, OsStr, OsString, c_void},
     iter::once,
     os::{
         raw::c_char,
@@ -91,7 +91,12 @@ impl NativeManager {
             let function = GetProcAddress(dll_handle, symbol_c.as_ptr());
             if function.is_null() {
                 FreeLibrary(dll_handle);
-                return Err(format!("failed to GetProcAddress for '{}' in '{}' (err {})", signature.symbol, signature.dll, GetLastError()))
+                return Err(format!(
+                    "failed to GetProcAddress for '{}' in '{}' (err {})",
+                    signature.symbol,
+                    signature.dll,
+                    GetLastError()
+                ))
             }
 
             // compatibility hacks

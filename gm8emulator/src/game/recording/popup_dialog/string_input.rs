@@ -35,11 +35,7 @@ impl InputTextCallbackHandler for CallbackHandler {
 
 impl Dialog for StringInputPopup {
     fn show(&mut self, info: &mut EmulatorContext) -> DialogState {
-        let EmulatorContext {
-            frame,
-            keybindings,
-            ..
-        } = info;
+        let EmulatorContext { frame, keybindings, .. } = info;
         let mut state: DialogState = DialogState::Closed;
 
         if let Some(token) = frame.begin_popup(&self.name) {

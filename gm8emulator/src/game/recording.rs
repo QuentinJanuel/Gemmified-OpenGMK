@@ -14,20 +14,20 @@ mod window;
 
 use crate::{
     game::{
+        Game, GameClock, SceneChange,
         recording::{
             instance_report::InstanceReport,
             window::{EmulatorContext, Openable, Window},
         },
         replay::{self, Replay},
         savestate::{self, SaveState},
-        Game, GameClock, SceneChange,
     },
     imgui_utils::*,
     input,
-    render::{atlas::AtlasRef, PrimitiveType, RendererState},
+    render::{PrimitiveType, RendererState, atlas::AtlasRef},
     types::Colour,
 };
-use imgui::{self, internal::RawWrapper, DrawCmd};
+use imgui::{self, DrawCmd, internal::RawWrapper};
 use ramen::{event::Event, input::Key};
 use serde::{Deserialize, Serialize};
 use std::{fs::File, path::PathBuf, time::Instant};
@@ -196,6 +196,7 @@ impl KeyState {
                 | Self::NeutralWillTriple
         )
     }
+
     pub fn starts_with_press(&self) -> bool {
         matches!(
             self,
@@ -215,25 +216,19 @@ impl KeyState {
             // target state expects button released, previous state is held
             *self = match target_state {
                 KeyState::Neutral
-                    | KeyState::NeutralWillCactus
-                    | KeyState::NeutralWillDouble
-                    | KeyState::NeutralDoubleEveryFrame
-                    => KeyState::HeldWillRelease,
-                KeyState::NeutralWillTriple
-                    | KeyState::NeutralWillPress
-                    => KeyState::HeldWillDouble,
+                | KeyState::NeutralWillCactus
+                | KeyState::NeutralWillDouble
+                | KeyState::NeutralDoubleEveryFrame => KeyState::HeldWillRelease,
+                KeyState::NeutralWillTriple | KeyState::NeutralWillPress => KeyState::HeldWillDouble,
                 _ => unreachable!(),
             };
         } else {
             // target state expects button held, previous state is released
             *self = match target_state {
-                KeyState::Held
-                    | KeyState::HeldWillDouble
-                    | KeyState::HeldDoubleEveryFrame
-                    => KeyState::NeutralWillPress,
-                KeyState::HeldWillTriple
-                    | KeyState::HeldWillRelease
-                    => KeyState::NeutralWillDouble,
+                KeyState::Held | KeyState::HeldWillDouble | KeyState::HeldDoubleEveryFrame => {
+                    KeyState::NeutralWillPress
+                },
+                KeyState::HeldWillTriple | KeyState::HeldWillRelease => KeyState::NeutralWillDouble,
                 _ => unreachable!(),
             };
         }
@@ -256,17 +251,9 @@ impl KeyState {
 
     fn reset_to(&mut self, pressed: bool) {
         *self = if pressed {
-            if *self == Self::HeldDoubleEveryFrame {
-                Self::HeldDoubleEveryFrame
-            } else {
-                Self::Held
-            }
+            if *self == Self::HeldDoubleEveryFrame { Self::HeldDoubleEveryFrame } else { Self::Held }
         } else {
-            if *self == Self::NeutralDoubleEveryFrame {
-                Self::NeutralDoubleEveryFrame
-            } else {
-                Self::Neutral
-            }
+            if *self == Self::NeutralDoubleEveryFrame { Self::NeutralDoubleEveryFrame } else { Self::Neutral }
         };
     }
 
@@ -544,9 +531,9 @@ impl Game {
                 let c = (31..34).contains(&(y - x).abs()) || (31..34).contains(&(y + x - 63).abs());
                 match (i & 1 != 0, i & 2 != 0) {
                     (false, false) => u8::from(c) * 255, // r
-                    (true, false)  => u8::from(c) * 255, // g
-                    (false, true)  => u8::from(c) * 255, // b
-                    (true, true)   => u8::from(c) * 255, // a
+                    (true, false) => u8::from(c) * 255,  // g
+                    (false, true) => u8::from(c) * 255,  // b
+                    (true, true) => u8::from(c) * 255,   // a
                 }
             })
             .collect::<Vec<_>>()
@@ -913,7 +900,8 @@ impl UIState<'_> {
             let time = self.clean_state_instant.unwrap().elapsed().as_millis();
             if time < GRID_CHANGE_TIME as _ {
                 self.grid_colour = self.grid_colour.lerp(target_grid_colour, time as f64 / GRID_CHANGE_TIME as f64);
-                self.grid_colour_background = self.grid_colour_background.lerp(target_grid_background, time as f64 / GRID_CHANGE_TIME as f64);
+                self.grid_colour_background =
+                    self.grid_colour_background.lerp(target_grid_background, time as f64 / GRID_CHANGE_TIME as f64);
             } else {
                 self.clean_state_instant = None;
                 self.grid_colour = target_grid_colour;

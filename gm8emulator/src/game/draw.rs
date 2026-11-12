@@ -1,5 +1,5 @@
 use crate::{
-    asset::{self, font, Font},
+    asset::{Font, font},
     game::{Game, GetAsset, PlayType, Version},
     gml,
     math::Real,
@@ -118,7 +118,25 @@ impl Game {
     pub fn draw(&mut self) -> gml::Result<()> {
         // Update views that should be following objects
         if self.room.views_enabled {
-            self.renderer.clear_view(self.background_colour, 1.0);
+            // This clear paints the *window* region no view port covers, with the game's "colour
+            // outside the room". It must not fire when the game has redirected drawing into a
+            // surface of its own: that surface is the game's, not the window's, and whatever it
+            // put there before the draw phase is content, not letterbox. GM 8.2's app-surface
+            // pipeline (gm82dx9 sets the target in End Step so the runner's own drawing lands in
+            // it) makes that the normal case -- renex engine paints its room background there and
+            // this clear was wiping it black every frame, in every room with views enabled.
+            //
+            // Only the *colour* half is the window's, though. The z-buffer is scratch space for one
+            // frame's hidden-surface removal and has to be cleared wherever the frame is going, or
+            // last frame's depths reject this frame's fragments -- which is not a subtle difference:
+            // it punches holes straight through a 3D model, showing whatever the colour buffer
+            // already held. renex's teapot boss depth-tests on the app surface, and comes out full
+            // of them without this.
+            if self.surface_target.is_none() {
+                self.renderer.clear_view(self.background_colour, 1.0);
+            } else {
+                self.renderer.clear_zbuf();
+            }
             for view in self.room.views.iter_mut().filter(|x| x.visible) {
                 if let Some(handle) = match view.follow_target {
                     obj_id if obj_id < 100000 => {
@@ -242,7 +260,13 @@ impl Game {
             }
             Ok(())
         } else {
-            Err(gml::Error::NonexistentAsset(asset::Type::Sprite, instance.sprite_index.get()))
+            // An instance whose sprite does not exist draws nothing. Overwhelmingly that is
+            // `sprite_index` -1, which every instance of a sprite-less object carries, and this
+            // is also what GML's `draw_sprite` family does (see the note on it in gml/kernel.rs).
+            //
+            // Returning an error here would take the game down through `draw_self`, which
+            // propagates it.
+            Ok(())
         }
     }
 
@@ -276,8 +300,7 @@ impl Game {
                     game.run_instance_event(gml::ev::DRAW, 0, idx, idx, None)
                 } else {
                     // Default draw action
-                    let _ = game.draw_instance_default(idx);
-                    Ok(())
+                    game.draw_instance_default(idx)
                 }
             } else {
                 Ok(())
@@ -316,7 +339,7 @@ impl Game {
         // Extent for drawing tiles in case view is rotated
         let tile_end_x = f64::from(src_x + src_w + src_h / 2);
         let tile_end_y = f64::from(src_y + src_h + src_w / 2);
-    
+
         // draw backgrounds
         self.renderer.set_depth(12000.0);
         for background in self.room.backgrounds.iter().filter(|x| x.visible && !x.is_foreground) {

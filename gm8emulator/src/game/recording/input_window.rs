@@ -1,9 +1,8 @@
 use crate::{
     game::recording::{
-        self,
+        self, InputMode, KeyState,
         keybinds::Binding,
         window::{EmulatorContext, Window},
-        InputMode, KeyState,
     },
     imgui_utils::*,
     input,
@@ -48,10 +47,7 @@ impl Window for InputWindows {
 // Keyboard window
 impl InputWindows {
     pub fn new() -> Self {
-        InputWindows {
-            context_menu_type: None,
-            request_context_menu: false,
-        }
+        InputWindows { context_menu_type: None, request_context_menu: false }
     }
 
     fn request_context_menu(&mut self, menu_type: ContextMenuType) {
@@ -475,12 +471,7 @@ impl InputWindows {
         y: f32,
         code: ramen::input::Key,
     ) {
-        let EmulatorContext {
-            frame,
-            keyboard_state,
-            config,
-            ..
-        } = info;
+        let EmulatorContext { frame, keyboard_state, config, .. } = info;
 
         let vk = input::ramen2vk(code);
         let imgui_key = input::ramen2imgui(code).unwrap(); // We only display keys that actually have a mapping
@@ -545,11 +536,7 @@ impl InputWindows {
         y: f32,
         button: i8,
     ) {
-        let EmulatorContext {
-            frame,
-            mouse_state,
-            ..
-        } = info;
+        let EmulatorContext { frame, mouse_state, .. } = info;
 
         let state: &mut KeyState = &mut mouse_state[button as usize];
         if frame.invisible_button_with_size_and_pos(name, size, Vec2(x, y)) {

@@ -1,10 +1,9 @@
 use super::{
-    mappings,
+    Value, mappings,
     runtime::{
         ArrayAccessor, BinaryOperator, FieldAccessor, InstanceIdentifier, Instruction, Node, ReturnType, UnaryOperator,
         VariableAccessor,
     },
-    Value,
 };
 use crate::{gml, math::Real};
 use gml_parser::{ast, token::Operator};
@@ -390,8 +389,9 @@ impl Compiler {
                     match function {
                         gml::Function::Runtime(f) => Node::ContextFunction { args, function: gml::FunctionPtr(*f) },
                         gml::Function::Engine(f) => Node::StateFunction { args, function: gml::FunctionPtr(*f) },
-                        gml::Function::Volatile(f) |
-                        gml::Function::Constant(f) => Node::RoutineFunction { args, function: gml::FunctionPtr(*f) },
+                        gml::Function::Volatile(f) | gml::Function::Constant(f) => {
+                            Node::RoutineFunction { args, function: gml::FunctionPtr(*f) }
+                        },
                         gml::Function::Pure(f) => Node::ValueFunction { args, function: gml::FunctionPtr(*f) },
                     }
                 } else {

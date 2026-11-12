@@ -1,14 +1,14 @@
 use crate::{
     game::{
+        Game,
         recording::{
+            KeyState, ProjectConfig, WindowKind,
             instance_report::InstanceReport,
             keybinds::{Binding, Keybindings},
             popup_dialog::Dialog,
-            KeyState, ProjectConfig, WindowKind,
         },
         replay::{FrameRng, Replay},
         savestate::{self, SaveState},
-        Game,
     },
     imgui_utils::Vec2,
     render::RendererState,

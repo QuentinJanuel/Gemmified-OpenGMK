@@ -4,8 +4,10 @@ use crate::{
     gml,
     input::MouseButton,
     instance::Instance,
+    spatial_grid::SpatialGrid,
     types::ID,
 };
+use std::collections::HashMap;
 
 impl Game {
     /// Runs an event for all objects which hold the given event.
@@ -592,8 +594,35 @@ impl Game {
         Ok(())
     }
 
+    /// Re-buckets a handle in its own object type's spatial grid (if one has been built during
+    /// this `run_collisions()` call), after something has repositioned it -- called from the
+    /// solid push-back logic below so a later query doesn't keep using a stale cell for it. A
+    /// no-op if this handle's object type was never used as a collision target this call (then
+    /// there's no cached grid entry to keep in sync in the first place).
+    fn regrid_instance(&self, grids: &mut HashMap<ID, (SpatialGrid, usize)>, handle: usize) {
+        let object_index = self.room.instance_list.get(handle).object_index.get();
+        if let Some((grid, _)) = grids.get_mut(&object_index) {
+            if grid.contains(handle) {
+                let (bbox, _) = self.instance_bbox(handle);
+                grid.reinsert(handle, bbox);
+            }
+        }
+    }
+
     /// Runs all collision events for the current active instances
     pub fn run_collisions(&mut self) -> gml::Result<()> {
+        // One spatial grid per target object, cached for this whole call, used to prune pairs
+        // whose bounding boxes can't possibly overlap before falling through to the same precise
+        // check_collision test run today -- see `spatial_grid.rs` for why this never changes
+        // which pairs actually collide, only how many pairs need to be considered.
+        //
+        // Safe to cache across the whole call: `object_id_map` is append-only for the duration of
+        // a single `run_collisions()` (nothing shrinks/renumbers it until `remove_with`/
+        // `remove_as_vec` runs, both only ever called after this function returns -- see
+        // `InstanceList::object_id_map_slice`'s doc comment) -- it just needs topping up with
+        // anything created since it was last used.
+        let mut grids: HashMap<ID, (SpatialGrid, usize)> = HashMap::new();
+
         // Iter through every object that has a collision event registered (non-borrowing iter because Rust)
         let mut i = 0;
         while let Some((object, target_list)) =
@@ -604,9 +633,60 @@ impl Game {
             'iter1: while let Some(instance) = iter1.next(&self.room.instance_list) {
                 // Go through all its collision target objects
                 for target_obj in target_list.borrow().iter().copied() {
-                    // And iter every instance of the target object
-                    let mut iter2 = self.room.instance_list.iter_by_object(target_obj);
-                    while let Some(target) = iter2.next(&self.room.instance_list) {
+                    // Top up (or create) this target object's grid with anything created since we
+                    // last looked, then narrow to candidates near `instance` -- matches the "count
+                    // captured fresh for this instance's turn" semantics the plain iter_by_object
+                    // walk this replaces had (a target created after this point becomes visible
+                    // starting from the next `instance`'s turn, same as before).
+                    let candidates = {
+                        let (grid, cursor) = grids.entry(target_obj).or_insert_with(|| (SpatialGrid::new(), 0));
+                        let handles = self.room.instance_list.object_id_map_slice(target_obj);
+                        for (idx, &handle) in handles.iter().enumerate().skip(*cursor) {
+                            let (bbox, _) = self.instance_bbox(handle);
+                            grid.insert(handle, bbox, idx);
+                        }
+                        *cursor = handles.len();
+
+                        let (query_bbox, _) = self.instance_bbox(instance);
+                        let candidates = grid.query(query_bbox);
+
+                        // Debug-only safety net: confirm the grid never silently drops a pair the
+                        // old naive scan would have offered to check_collision. Compares against
+                        // a plain AABB overlap test (the same cheap test check_collision itself
+                        // does first) rather than full precise collision, since that's exactly the
+                        // set of pairs the grid is meant to approximate.
+                        #[cfg(debug_assertions)]
+                        {
+                            fn overlaps(a: (i32, i32, i32, i32), b: (i32, i32, i32, i32)) -> bool {
+                                !(a.2 < b.0 || b.2 < a.0 || a.3 < b.1 || b.3 < a.1)
+                            }
+                            let mut naive: Vec<usize> = handles
+                                .iter()
+                                .copied()
+                                .filter(|&h| self.room.instance_list.get(h).is_active())
+                                .filter(|&h| overlaps(query_bbox, self.instance_bbox(h).0))
+                                .collect();
+                            let mut via_grid: Vec<usize> = candidates
+                                .iter()
+                                .copied()
+                                .filter(|&h| self.room.instance_list.get(h).is_active())
+                                .collect();
+                            naive.sort_unstable();
+                            via_grid.sort_unstable();
+                            debug_assert_eq!(
+                                naive, via_grid,
+                                "spatial grid disagreed with a naive AABB scan for target_obj {}",
+                                target_obj
+                            );
+                        }
+
+                        candidates
+                    };
+
+                    for target in candidates {
+                        if !self.room.instance_list.get(target).is_active() {
+                            continue;
+                        }
                         // And finally, check if the two instances collide
                         if self.check_collision(instance, target) {
                             // If either instance is solid, move both back to their previous positions
@@ -619,6 +699,8 @@ impl Game {
                                     inst.bbox_is_stale.set(true);
                                     inst.path_position.set(inst.path_positionprevious.get());
                                 }
+                                self.regrid_instance(&mut grids, instance);
+                                self.regrid_instance(&mut grids, target);
                             }
 
                             // Run both collision events
@@ -642,6 +724,8 @@ impl Game {
                                     inst2.y.set(inst2.yprevious.get());
                                     inst2.bbox_is_stale.set(true);
                                     inst2.path_position.set(inst2.path_positionprevious.get());
+                                    self.regrid_instance(&mut grids, instance);
+                                    self.regrid_instance(&mut grids, target);
                                 }
                             }
 

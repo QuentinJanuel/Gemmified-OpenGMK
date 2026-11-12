@@ -2,10 +2,9 @@ use crate::{
     asset,
     game::{Game, GameClock, GetAsset, SceneChange, Version},
     gml::{
-        self,
+        self, Context, InstanceVariable, Value,
         datetime::DateTime,
         mappings::{self, constants as gml_constants},
-        Context, InstanceVariable, Value,
     },
     instance::Field,
     math::Real,
@@ -46,22 +45,10 @@ pub enum Node {
     Variable { accessor: VariableAccessor },
     Field { accessor: FieldAccessor },
 
-    ContextFunction {
-        args: Box<[Node]>,
-        function: gml::ContextFunction
-    },
-    StateFunction {
-        args: Box<[Node]>,
-        function: gml::StateFunction
-    },
-    RoutineFunction {
-        args: Box<[Node]>,
-        function: gml::RoutineFunction,
-    },
-    ValueFunction {
-        args: Box<[Node]>,
-        function: gml::ValueFunction
-    },
+    ContextFunction { args: Box<[Node]>, function: gml::ContextFunction },
+    StateFunction { args: Box<[Node]>, function: gml::StateFunction },
+    RoutineFunction { args: Box<[Node]>, function: gml::RoutineFunction },
+    ValueFunction { args: Box<[Node]>, function: gml::ValueFunction },
 
     Unary { child: Box<Node>, operator: UnaryOperator },
     Binary { left: Box<Node>, right: Box<Node>, operator: BinaryOperator, type_unsafe: bool },
@@ -183,6 +170,23 @@ pub enum Error {
     InvalidExternal(i32),
 }
 
+/// Says which GML function an engine call failed inside, so an error reaching the player names it.
+///
+/// Without this, everything an engine function can raise arrives bare: "nonexistent asset id -1
+/// (sprite)" could be any of the several dozen functions that take a sprite, which is no help at
+/// all when the call is somewhere in a game's compiled event code. The functions that build their
+/// own `FunctionError` (`file_bin_read_byte` and friends) already carry a name and are left alone,
+/// rather than nested into "a: b: ...".
+pub(crate) fn name_function_error<T: gml::FunctionTryFromEnum>(function: &gml::FunctionPtr<T>, error: Error) -> Error {
+    match error {
+        Error::FunctionError(..) => error,
+        _ => match mappings::find_function_by_address(function) {
+            Some((_, name)) => Error::FunctionError(name.into(), error.to_string()),
+            None => error,
+        },
+    }
+}
+
 impl std::error::Error for Error {}
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -278,23 +282,23 @@ impl fmt::Debug for Node {
             Node::Field { accessor } => write!(f, "<field: {:?}>", accessor),
 
             Node::ContextFunction { args, function } => {
-                let (fn_id, fn_name) = mappings::find_function_by_address(function)
-                    .map(|(i, v)| (i+1, v)).unwrap_or((0, "?unknown?"));
+                let (fn_id, fn_name) =
+                    mappings::find_function_by_address(function).map(|(i, v)| (i + 1, v)).unwrap_or((0, "?unknown?"));
                 write!(f, "<context fn #{}: {}({:?})", fn_id, fn_name, args)
             },
             Node::StateFunction { args, function } => {
-                let (fn_id, fn_name) = mappings::find_function_by_address(function)
-                    .map(|(i, v)| (i+1, v)).unwrap_or((0, "?unknown?"));
+                let (fn_id, fn_name) =
+                    mappings::find_function_by_address(function).map(|(i, v)| (i + 1, v)).unwrap_or((0, "?unknown?"));
                 write!(f, "<state fn #{}: {}({:?})", fn_id, fn_name, args)
             },
             Node::RoutineFunction { args, function } => {
-                let (fn_id, fn_name) = mappings::find_function_by_address(function)
-                    .map(|(i, v)| (i+1, v)).unwrap_or((0, "?unknown?"));
+                let (fn_id, fn_name) =
+                    mappings::find_function_by_address(function).map(|(i, v)| (i + 1, v)).unwrap_or((0, "?unknown?"));
                 write!(f, "<routine fn #{}: {}({:?})", fn_id, fn_name, args)
             },
             Node::ValueFunction { args, function } => {
-                let (fn_id, fn_name) = mappings::find_function_by_address(function)
-                    .map(|(i, v)| (i+1, v)).unwrap_or((0, "?unknown?"));
+                let (fn_id, fn_name) =
+                    mappings::find_function_by_address(function).map(|(i, v)| (i + 1, v)).unwrap_or((0, "?unknown?"));
                 write!(f, "<value fn #{}: {}({:?})", fn_id, fn_name, args)
             },
 
@@ -618,28 +622,28 @@ impl Game {
                 for (src, dest) in args.iter().zip(arg_values.iter_mut()) {
                     *dest = self.eval(src, context)?;
                 }
-                function.0(self, context, &arg_values[..args.len()])
+                function.0(self, context, &arg_values[..args.len()]).map_err(|e| name_function_error(function, e))
             },
             Node::StateFunction { args, function } => {
                 let mut arg_values: [Value; 16] = Default::default();
                 for (src, dest) in args.iter().zip(arg_values.iter_mut()) {
                     *dest = self.eval(src, context)?;
                 }
-                function.0(self, &arg_values[..args.len()])
+                function.0(self, &arg_values[..args.len()]).map_err(|e| name_function_error(function, e))
             },
             Node::RoutineFunction { args, function } => {
                 let mut arg_values: [Value; 16] = Default::default();
                 for (src, dest) in args.iter().zip(arg_values.iter_mut()) {
                     *dest = self.eval(src, context)?;
                 }
-                function.0(self, &arg_values[..args.len()])
+                function.0(self, &arg_values[..args.len()]).map_err(|e| name_function_error(function, e))
             },
             Node::ValueFunction { args, function } => {
                 let mut arg_values: [Value; 16] = Default::default();
                 for (src, dest) in args.iter().zip(arg_values.iter_mut()) {
                     *dest = self.eval(src, context)?;
                 }
-                function.0(&arg_values[..args.len()])
+                function.0(&arg_values[..args.len()]).map_err(|e| name_function_error(function, e))
             },
             Node::Script { args, script_id } => {
                 if let Some(Some(script)) = self.assets.scripts.get(*script_id) {
@@ -1042,6 +1046,16 @@ impl Game {
             InstanceVariable::Lives => Ok(self.lives.into()),
             InstanceVariable::Health => Ok(self.health.into()),
             InstanceVariable::GameId => Ok(self.game_id.into()),
+            // wasm32-unknown-unknown has no concept of a process working directory at all --
+            // std::env::current_dir() always returns an Unsupported io::Error there (so unwrapping it
+            // would panic the instant any GML read working_directory).
+            // Native's `Game::launch` already does std::env::set_current_dir(program_directory)
+            // at startup (game.rs), so the two are identical in practice barring something else
+            // changing the CWD later -- reuse the already-set, always-safe field on wasm instead
+            // of touching the OS at all.
+            #[cfg(target_arch = "wasm32")]
+            InstanceVariable::WorkingDirectory => Ok(self.program_directory.clone().into()),
+            #[cfg(not(target_arch = "wasm32"))]
             InstanceVariable::WorkingDirectory => {
                 // get cwd in WTF-8
                 let os_cwd = std::env::current_dir().unwrap();
@@ -1208,6 +1222,7 @@ impl Game {
                 // GM uses GetTickCount(), which has a resolution of *roughly* 16ms. In realtime,
                 // it's probably more accurate to force it to increase in 16ms increments.
                 GameClock::StartupEpoch(i) => (i.elapsed().as_millis() as u32 & 0xFFFFFFF0).into(),
+                GameClock::Realtime => (gml::datetime::tick_count() & 0xFFFFFFF0).into(),
             }),
             InstanceVariable::CurrentYear => Ok(self.clock.measure().year().into()),
             InstanceVariable::CurrentMonth => Ok(self.clock.measure().month().into()),
@@ -1287,10 +1302,7 @@ impl Game {
             InstanceVariable::Depth => instance.depth.set(value.into()),
             InstanceVariable::SpriteIndex => {
                 let v: i32 = value.into();
-                instance.set_sprite_index(
-                    v,
-                    self.assets.sprites.get_asset(v).map_or(0, |s| s.frames.len())
-                );
+                instance.set_sprite_index(v, self.assets.sprites.get_asset(v).map_or(0, |s| s.frames.len()));
             },
             InstanceVariable::ImageIndex => {
                 instance.image_index.set(value.into());

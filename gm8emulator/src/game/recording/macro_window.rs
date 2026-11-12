@@ -1,8 +1,8 @@
 use crate::{
     game::recording::{
+        KeyState,
         keybinds::Binding,
         window::{EmulatorContext, Openable, Window},
-        KeyState,
     },
     input::Button,
 };
@@ -365,11 +365,7 @@ impl MacroWindow {
             }
         }
 
-        if token_valid {
-            tt
-        } else {
-            None
-        }
+        if token_valid { tt } else { None }
     }
 }
 

@@ -10,6 +10,7 @@ pub mod rand;
 pub mod runtime;
 pub mod string;
 pub mod value;
+pub mod vfs;
 
 pub use compiler::Compiler;
 pub use context::Context;
@@ -19,7 +20,7 @@ pub use value::Value;
 pub type Result<T> = std::result::Result<T, runtime::Error>;
 pub use runtime::Error;
 
-use serde::{Serialize, Deserialize, ser, de};
+use serde::{Deserialize, Serialize, de, ser};
 
 #[repr(transparent)]
 #[derive(Clone)]
@@ -59,8 +60,7 @@ impl Function {
         match self {
             Self::Runtime(f) => f(game, context, args),
             Self::Engine(f) => f(game, args),
-            Self::Volatile(f) |
-            Self::Constant(f) => f(game, args),
+            Self::Volatile(f) | Self::Constant(f) => f(game, args),
             Self::Pure(f) => f(args),
         }
     }
@@ -69,14 +69,13 @@ impl Function {
         match self {
             Self::Runtime(f) => *f as *const (),
             Self::Engine(f) => *f as *const (),
-            Self::Volatile(f) |
-            Self::Constant(f) => *f as *const (),
+            Self::Volatile(f) | Self::Constant(f) => *f as *const (),
             Self::Pure(f) => *f as *const (),
         }
     }
 }
 
-trait FunctionTryFromEnum: Sized {
+pub(crate) trait FunctionTryFromEnum: Sized {
     fn pick(e: &Function) -> Option<Self>;
     // TODO: FnPtr trait is only nightly in 1.77.2, so we had to roll our own.
     fn addr(&self) -> *const ();
@@ -86,28 +85,40 @@ impl FunctionTryFromEnum for ContextFunctionPtr {
     fn pick(e: &Function) -> Option<Self> {
         if let Function::Runtime(f) = e { Some(*f) } else { None }
     }
-    fn addr(&self) -> *const () { *self as _ }
+
+    fn addr(&self) -> *const () {
+        *self as _
+    }
 }
 
 impl FunctionTryFromEnum for StateFunctionPtr {
     fn pick(e: &Function) -> Option<Self> {
         if let Function::Engine(f) = e { Some(*f) } else { None }
     }
-    fn addr(&self) -> *const () { *self as _ }
+
+    fn addr(&self) -> *const () {
+        *self as _
+    }
 }
 
 impl FunctionTryFromEnum for RoutineFunctionPtr {
     fn pick(e: &Function) -> Option<Self> {
         if let Function::Volatile(f) | Function::Constant(f) = e { Some(*f) } else { None }
     }
-    fn addr(&self) -> *const () { *self as _ }
+
+    fn addr(&self) -> *const () {
+        *self as _
+    }
 }
 
 impl FunctionTryFromEnum for ValueFunctionPtr {
     fn pick(e: &Function) -> Option<Self> {
         if let Function::Pure(f) = e { Some(*f) } else { None }
     }
-    fn addr(&self) -> *const () { *self as _ }
+
+    fn addr(&self) -> *const () {
+        *self as _
+    }
 }
 
 impl<T: FunctionTryFromEnum> Serialize for FunctionPtr<T> {
@@ -115,10 +126,13 @@ impl<T: FunctionTryFromEnum> Serialize for FunctionPtr<T> {
     where
         S: serde::Serializer,
     {
-        s.serialize_u16(mappings::FUNCTIONS.values()
-            .position(|&x| x.addr() == self.0.addr())
-            .ok_or(ser::Error::custom("function doesn't belong to GML API"))?
-            .try_into().or(Err(ser::Error::custom("function index is too big to serialize")))?
+        s.serialize_u16(
+            mappings::FUNCTIONS
+                .values()
+                .position(|&x| x.addr() == self.0.addr())
+                .ok_or(ser::Error::custom("function doesn't belong to GML API"))?
+                .try_into()
+                .or(Err(ser::Error::custom("function index is too big to serialize")))?,
         )
     }
 }

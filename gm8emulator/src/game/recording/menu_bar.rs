@@ -1,6 +1,6 @@
 use crate::game::recording::{
-    console::ConsoleWindow, input_edit::InputEditWindow, keybinds::KeybindWindow, macro_window::MacroWindow,
-    window::Openable, UIState,
+    UIState, console::ConsoleWindow, input_edit::InputEditWindow, keybinds::KeybindWindow, macro_window::MacroWindow,
+    window::Openable,
 };
 
 impl UIState<'_> {

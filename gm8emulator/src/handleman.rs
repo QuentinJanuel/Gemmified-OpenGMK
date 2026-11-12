@@ -56,6 +56,13 @@ impl<T> HandleList<T> {
     pub fn put(&mut self, handle: T) -> i32 {
         self.add(handle).unwrap()
     }
+
+    /// How many slots exist, freed ones included -- so every live handle is below this. It is what
+    /// `surface_get_count` reports, for the `repeat (surface_get_count()) if (surface_exists(i))`
+    /// loop GM8.2 games walk their surfaces with.
+    pub fn slots(&self) -> i32 {
+        self.0.len() as i32
+    }
 }
 
 impl<T, const LEN: usize> HandleArray<T, LEN> {

@@ -4,9 +4,13 @@ exclude = ["gm8emulator-wow64"]
 members = [
     # main projects
     "gm8emulator",
-    "gm8decompiler",
-    "gml-parser",
-    "gm8exe",
+    # The host realm's half of the GEMS plugin, a wasm module of its own so the page never loads the
+    # engine. See host/src/lib.rs.
+    "host",
+    # Direct3D 9 shader bytecode -> GLSL ES 3.00. Standalone by design: its input is a byte slice
+    # and its output is a string, so it is the one part of this workspace that `cargo test` can
+    # cover properly on a machine with no GPU.
+    "sm3",
 ]
 
 [profile.release]

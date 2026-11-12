@@ -1,49 +1,72 @@
 mod action;
 mod asset;
+// Browser-only DOM helpers; nothing outside the wasm-gated modules references them.
+#[cfg(target_arch = "wasm32")]
+mod dom;
 mod game;
 mod gml;
 mod handleman;
+#[cfg(feature = "tas")]
 mod imgui_key_utils;
+#[cfg(feature = "tas")]
 mod imgui_utils;
 mod input;
 mod instance;
 mod instancelist;
+mod loopback;
 mod math;
 mod render;
+mod spatial_grid;
 mod tile;
 mod types;
 mod util;
+mod window;
 
+// The native CLI (argv parsing, `fs::read`, `Game::run()`'s blocking `Instant`/sleep-paced loop)
+// has no meaning in a browser; the wasm build's real entry point is `wasm_entry::WasmGame`,
+// exposed to JS via wasm-bindgen. `main()` is therefore a bare
+// stub on wasm32 -- Cargo has no way to declaratively skip building the default bin target for a
+// given `target_arch`, so this is the standard way to make that target's build inert instead.
+#[cfg(target_arch = "wasm32")]
+fn main() {}
+
+#[cfg(not(target_arch = "wasm32"))]
+use game::{Game, GameClock, PlayType};
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "tas")]
 use game::{
+    Replay,
     savestate::{self, SaveState},
-    Game, GameClock, PlayType, Replay,
 };
+#[cfg(not(target_arch = "wasm32"))]
 use std::{
     env, fs,
     path::{Path, PathBuf},
     process,
 };
 
+#[cfg(not(target_arch = "wasm32"))]
 const EXIT_SUCCESS: i32 = 0;
+#[cfg(not(target_arch = "wasm32"))]
 const EXIT_FAILURE: i32 = 1;
 
+#[cfg(not(target_arch = "wasm32"))]
 fn help(argv0: &str, opts: getopts::Options) {
     print!(
         "{}",
-        opts.usage(&format!(
-            "Usage: {} FILE [options]",
-            match Path::new(argv0).file_name() {
-                Some(file) => file.to_str().unwrap_or(argv0),
-                None => argv0,
-            }
-        ))
+        opts.usage(&format!("Usage: {} FILE [options]", match Path::new(argv0).file_name() {
+            Some(file) => file.to_str().unwrap_or(argv0),
+            None => argv0,
+        }))
     );
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn main() {
     process::exit(xmain());
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn xmain() -> i32 {
     let args: Vec<String> = env::args().collect();
     let process = args[0].clone();
@@ -56,10 +79,14 @@ fn xmain() -> i32 {
     opts.optflag("r", "realtime", "disables clock spoofing");
     opts.optflag("c", "capture", "captures a recording");
     opts.optflagopt("l", "no-framelimit-until", "disables the frame-limiter until specified frame", "FRAME");
-    opts.optopt("n", "project-name", "name of TAS project to create or load", "NAME");
-    opts.optopt("f", "replay-file", "path to savestate file to replay", "FILE");
-    opts.optopt("o", "output-file", "output savestate name in replay mode", "FILE.bin");
+    #[cfg(feature = "tas")]
+    {
+        opts.optopt("n", "project-name", "name of TAS project to create or load", "NAME");
+        opts.optopt("f", "replay-file", "path to savestate file to replay", "FILE");
+        opts.optopt("o", "output-file", "output savestate name in replay mode", "FILE.bin");
+    }
     opts.optmulti("a", "game-arg", "argument to pass to the game", "ARG");
+    #[cfg(feature = "tas")]
     opts.optflagopt("p", "start-save", "Either loads the savestate specified after this parameter or starts at the first frame. If a .gmtas is specified by -f this will start the replay from this savestate instead", "savestate");
 
     let matches = match opts.parse(&args[1..]) {
@@ -97,16 +124,23 @@ fn xmain() -> i32 {
         .unwrap_or(0);
     let frame_limiter = !matches.opt_present("l");
     let verbose = matches.opt_present("v");
+    #[cfg(feature = "tas")]
     let output_bin = matches.opt_str("o").map(PathBuf::from);
+    #[cfg(feature = "tas")]
     let pause = matches.opt_present("p");
+    #[cfg(feature = "tas")]
     let start_save_path = matches.opt_str("p").map(PathBuf::from);
+    #[cfg(feature = "tas")]
     let project_path = matches.opt_str("n").map(|name| {
         let mut p = env::current_dir().expect("std::env::current_dir() failed");
         p.push("projects");
         p.push(name);
         p
     });
+    #[cfg(not(feature = "tas"))]
+    let project_path: Option<PathBuf> = None;
 
+    #[cfg(feature = "tas")]
     if let Some(bin) = &output_bin {
         if bin.extension().and_then(|x| x.to_str()) != Some("bin") {
             eprintln!("invalid output file for -o: must be a .bin file");
@@ -141,6 +175,7 @@ fn xmain() -> i32 {
             })
     });
     let can_clear_temp_dir = temp_dir.is_none();
+    #[cfg(feature = "tas")]
     let replay = match matches
         .opt_str("f")
         .map(|filename| {
@@ -227,6 +262,7 @@ fn xmain() -> i32 {
 
     let encoding = encoding_rs::SHIFT_JIS; // TODO: argument
 
+    #[cfg(feature = "tas")]
     let play_type = if project_path.is_some() {
         PlayType::Record
     } else if replay.is_some() {
@@ -234,6 +270,8 @@ fn xmain() -> i32 {
     } else {
         PlayType::Normal
     };
+    #[cfg(not(feature = "tas"))]
+    let play_type = PlayType::Normal;
 
     let mut components = match Game::launch(
         assets,
@@ -255,7 +293,8 @@ fn xmain() -> i32 {
 
     let time_now = GameClock::SpoofedNanos(gml::datetime::now_as_nanos());
 
-    if let Err(err) = if let Some(path) = project_path {
+    #[cfg(feature = "tas")]
+    let final_result: Result<(), Box<dyn std::error::Error>> = if let Some(path) = project_path {
         components.clock = time_now;
         components.record(path, pause, start_save_path.as_ref());
         Ok(())
@@ -285,7 +324,36 @@ fn xmain() -> i32 {
             std::fs::remove_dir_all(temp_dir).ok();
         }
         result
-    } {
+    };
+
+    // Without the `tas` feature, there is no recording/replay tooling: just run the game normally.
+    #[cfg(not(feature = "tas"))]
+    let final_result: Result<(), Box<dyn std::error::Error>> = {
+        // cache temp_dir and included files because run() takes ownership of nothing but we still
+        // want to clean these up the same way the tas-enabled build does
+        let temp_dir: Option<PathBuf> = if can_clear_temp_dir {
+            Some(components.decode_str(components.temp_directory.as_ref()).into_owned().into())
+        } else {
+            None
+        };
+        let files_to_delete = components
+            .included_files
+            .iter()
+            .filter(|i| i.remove_at_end)
+            .map(|i| PathBuf::from(components.decode_str(i.name.as_ref()).into_owned()))
+            .collect::<Vec<_>>();
+        components.clock = if spoof_time { time_now } else { GameClock::StartupEpoch(std::time::Instant::now()) };
+        let result = components.run();
+        for file in files_to_delete.into_iter() {
+            std::fs::remove_file(file).ok();
+        }
+        if let Some(temp_dir) = temp_dir {
+            std::fs::remove_dir_all(temp_dir).ok();
+        }
+        result
+    };
+
+    if let Err(err) = final_result {
         println!("Runtime error: {}", err);
         EXIT_FAILURE
     } else {

@@ -1,4 +1,13 @@
+#[cfg(not(target_arch = "wasm32"))]
 pub mod audio;
+#[cfg(target_arch = "wasm32")]
+#[path = "game/audio_wasm.rs"]
+pub mod audio;
+/// Web Audio as the browser build sees it: not `web_sys`, but stand-ins that send the plugin's audio
+/// commands to whoever has a device. See the module header -- `audio_wasm.rs` cannot tell.
+#[cfg(target_arch = "wasm32")]
+#[path = "game/audio_proxy.rs"]
+pub mod audio_proxy;
 pub mod background;
 pub mod draw;
 pub mod events;
@@ -10,62 +19,70 @@ pub mod movement;
 pub mod particle;
 pub mod pathfinding;
 pub mod platform;
+#[cfg(feature = "tas")]
 pub mod recording;
+#[cfg(feature = "tas")]
 pub mod replay;
+#[cfg(feature = "tas")]
 pub mod savestate;
 pub mod surface;
 pub mod transition;
 pub mod view;
 
 pub use background::Background;
+#[cfg(feature = "tas")]
 pub use replay::Replay;
+#[cfg(feature = "tas")]
 pub use savestate::SaveState;
 pub use view::View;
 
+#[cfg(feature = "tas")]
+use crate::game::replay::FrameRng;
 use crate::{
     action::Tree,
     asset::{
-        self,
+        self, Object, Script, Sound, Timeline,
         font::{Character, Font},
         path::{self, Path},
         room::{self, Room},
         sprite::{Collider, Frame, Sprite},
         trigger::{self, Trigger},
-        Object, Script, Sound, Timeline,
     },
     game::gm_save::GMSave,
-    game::replay::FrameRng,
-    gml::{self, ds, ev, file, rand::Random, runtime::Instruction, Compiler, Context},
+    gml::{self, Compiler, Context, ds, ev, file, rand::Random, runtime::Instruction},
     handleman::{HandleArray, HandleList, HandleManager},
     input::{self, Input},
     instance::{DummyFieldHolder, Instance, InstanceState},
     instancelist::{InstanceList, TileList},
     math::Real,
-    render::{atlas::AtlasBuilder, Renderer, RendererOptions, Scaling},
+    render::{Renderer, RendererOptions, Scaling, atlas::AtlasBuilder},
     tile,
     types::{Colour, ID},
     util,
+    window::{
+        event::Event,
+        window::{Controls, Window},
+    },
 };
 use encoding_rs::Encoding;
 use gm8exe::asset::{
-    extension::{CallingConvention, FileKind, FunctionValueKind},
     PascalString,
+    extension::{CallingConvention, FileKind, FunctionValueKind},
 };
 use includedfile::IncludedFile;
 use indexmap::IndexMap;
-use ramen::{
-    event::Event,
-    window::{Controls, Window},
-};
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "tas")]
+use std::collections::VecDeque;
+#[cfg(not(target_arch = "wasm32"))]
+use std::process::{Child, Command, Stdio};
 use std::{
     borrow::Cow,
     cell::{Cell, RefCell},
-    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, HashMap, HashSet},
     fs::File,
     io::Write,
     path::PathBuf,
-    process::{Child, Command, Stdio},
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -74,6 +91,11 @@ use std::{
 pub enum GameClock {
     StartupEpoch(#[serde(with = "game_epoch_serde")] Instant),
     SpoofedNanos(u128), // use this instead of real time if this is set
+    /// Real time, read from the host on every access, for platforms with no usable `Instant`.
+    /// `Instant::now()` panics on wasm32-unknown-unknown, so the browser build takes this instead
+    /// of `StartupEpoch`; `gml::datetime` sources both the wall clock and the tick count from JS.
+    /// Added last so the two variants above keep their serialized discriminants.
+    Realtime,
 }
 
 impl GameClock {
@@ -86,11 +108,7 @@ impl GameClock {
     }
 
     pub fn as_nanos(&self) -> u128 {
-        if let Self::SpoofedNanos(t) = self {
-            *t
-        } else {
-            gml::datetime::now_as_nanos()
-        }
+        if let Self::SpoofedNanos(t) = self { *t } else { gml::datetime::now_as_nanos() }
     }
 }
 
@@ -207,18 +225,31 @@ pub struct Game {
     pub included_files: Vec<IncludedFile>,
     pub gm_version: Version,
     pub open_ini: Option<(ini::Ini, gml::String)>, // keep the filename for writing
-    pub open_file: Option<file::TextHandle>,       // for legacy file functions from GM <= 5.1
+    /// The emulated Windows registry -- see the `registry_*` functions in `gml/kernel.rs`. `None`
+    /// until the first registry call loads it, because most games never touch the registry at all
+    /// and an eager load would cost every one of them a VFS round trip on startup.
+    pub registry: Option<ini::Ini>,
+    /// Root key the `registry_*_ext` functions address, as chosen by `registry_set_root`. GM8's
+    /// numbering: 0 = HKEY_CURRENT_USER (the default), 1 = HKEY_LOCAL_MACHINE, 2 = HKEY_CLASSES_ROOT,
+    /// 3 = HKEY_USERS, 4 = HKEY_CURRENT_CONFIG.
+    pub registry_root: i32,
+    pub open_file: Option<file::TextHandle>, // for legacy file functions from GM <= 5.1
     pub file_finder: Option<Box<dyn Iterator<Item = PathBuf>>>,
     pub clock: GameClock,
     pub parameters: Vec<String>,
     pub encoding: &'static Encoding,
 
     pub esc_close_game: bool,
+    // Real GM8's stock runner toggles fullscreen on F4 itself, entirely outside GML -- the compiled
+    // game can only opt out of it via this project setting (mirrors esc_close_game just above).
+    pub f4_fullscreen_toggle: bool,
 
     pub play_type: PlayType,
+    #[cfg(feature = "tas")]
     pub stored_events: VecDeque<replay::Event>,
-    pub frame_limiter: bool, // whether to limit FPS of gameplay by room_speed
+    pub frame_limiter: bool,   // whether to limit FPS of gameplay by room_speed
     pub frame_limit_at: usize, // on which frame to start limiting FPS
+    #[cfg(not(target_arch = "wasm32"))]
     pub ffmpeg_recorder: Option<Child>,
 
     pub audio: audio::AudioManager,
@@ -241,6 +272,9 @@ pub struct Game {
     pub unscaled_width: u32,
     // Height the window is supposed to have, assuming it hasn't been resized by the user
     pub unscaled_height: u32,
+
+    /// Loopback TCP the host answers (`crate::loopback`), reached through an extension's sockets.
+    pub loopback: crate::loopback::Loopback,
 }
 
 /// Enum indicating which GameMaker version a game was built with
@@ -327,6 +361,77 @@ macro_rules! handle_scene_change {
     }};
 }
 
+thread_local! {
+    // Backs `decode_gml_string` below: `gml/kernel.rs`'s `_arg_into!` macro extracts every
+    // `[string]`-typed GML function argument, but has no `self` in scope at every call site (some
+    // are plain free functions), so it can't call `Game::decode_str` directly the way asset-name
+    // decoding elsewhere does. Set once per `Game::launch` (only one `Game` is ever alive per
+    // process -- this engine never runs GML on more than one thread), read by every such call
+    // site instead. Defaults to UTF-8/GameMaker8_1 (a no-op re-decode) so nothing panics if ever
+    // read before a `Game` exists.
+    static STRING_ENCODING: Cell<(&'static Encoding, Version)> =
+        Cell::new((encoding_rs::UTF_8, Version::GameMaker8_1));
+}
+
+fn set_string_encoding(encoding: &'static Encoding, gm_version: Version) {
+    STRING_ENCODING.with(|cell| cell.set((encoding, gm_version)));
+}
+
+/// Decodes a GML string argument's raw bytes using the current game's actual encoding, matching
+/// `Game::decode_str`'s logic exactly (see `set_string_encoding` for why this can't just be a
+/// method call). Assuming UTF-8 (`String::from_utf8_lossy`) would mojibake any non-ASCII text in
+/// a GameMaker 8.0 game using a non-Unicode encoding (e.g. Shift-JIS for Japanese games).
+/// One string in one codepage, with every character the codepage lacks written as `?`.
+///
+/// Character by character only once the whole string has failed: `encode` reports that *something*
+/// was unmappable, never which, and the one-shot path is what almost every string takes.
+fn encode_lossy<'a>(encoding: &'static Encoding, utf8: &'a str) -> Cow<'a, [u8]> {
+    let (encoded, _, is_bad) = encoding.encode(utf8);
+    if !is_bad {
+        return encoded
+    }
+    let mut out = Vec::with_capacity(utf8.len());
+    for character in utf8.chars() {
+        let mut buffer = [0u8; 4];
+        let (bytes, _, bad) = encoding.encode(character.encode_utf8(&mut buffer));
+        if bad {
+            out.push(b'?');
+        } else {
+            out.extend_from_slice(&bytes);
+        }
+    }
+    Cow::Owned(out)
+}
+
+#[cfg(test)]
+mod encoding_tests {
+    use super::encode_lossy;
+
+    #[test]
+    fn keeps_what_the_codepage_holds() {
+        assert_eq!(encode_lossy(encoding_rs::SHIFT_JIS, "hello").as_ref(), b"hello");
+        // Shift-JIS has Japanese, which is the whole reason a fangame is built in it.
+        assert_eq!(encode_lossy(encoding_rs::SHIFT_JIS, "\u{3053}").as_ref(), &[0x82, 0xb1]);
+    }
+
+    #[test]
+    fn writes_what_it_does_not_hold_as_a_question_mark() {
+        // One accent must not empty the entire string.
+        assert_eq!(encode_lossy(encoding_rs::SHIFT_JIS, "h\u{e9}llo \u{e7}a va").as_ref(), b"h?llo ?a va");
+        assert_eq!(encode_lossy(encoding_rs::WINDOWS_1252, "caf\u{e9}").as_ref(), b"caf\xe9");
+        // Latin-1 cannot hold Japanese, and the rest of the line survives it.
+        assert_eq!(encode_lossy(encoding_rs::WINDOWS_1252, "hi \u{3053}\u{3093}").as_ref(), b"hi ??");
+    }
+}
+
+pub(crate) fn decode_gml_string(bytes: &[u8]) -> Cow<'_, str> {
+    let (encoding, gm_version) = STRING_ENCODING.with(Cell::get);
+    match gm_version {
+        Version::GameMaker8_0 => encoding.decode_without_bom_handling(bytes).0,
+        Version::GameMaker8_1 => String::from_utf8_lossy(bytes),
+    }
+}
+
 impl Game {
     pub fn launch(
         assets: gm8exe::GameAssets,
@@ -342,7 +447,9 @@ impl Game {
         // Parse file path
         let mut file_path2 = file_path.clone();
         file_path2.pop();
-        // Game Maker doesn't change working directory on load but doing it anyway makes life easier
+        // Game Maker doesn't change working directory on load but doing it anyway makes life easier.
+        // No such concept exists in a browser sandbox.
+        #[cfg(not(target_arch = "wasm32"))]
         std::env::set_current_dir(&file_path2)?;
         let mut param_string: &str = &file_path.to_string_lossy();
         let mut program_directory: &str = &file_path2.to_string_lossy();
@@ -428,6 +535,19 @@ impl Game {
 
         let mut temp_directory = match temp_dir {
             Some(path) => path,
+            // No filesystem exists in a browser at all -- unlike the fs calls below, several of
+            // the native functions this branch relies on (`std::env::temp_dir()`,
+            // `std::env::current_dir()` inside `make_temp_dir`'s fallback) don't return `Result`
+            // on wasm32 and panic outright rather than erroring gracefully, so this whole
+            // resolution dance is skipped: nothing will ever be writable regardless of which path
+            // we pick, so just use the same empty-`PathBuf` fallback the native code already
+            // falls back to when it can't find anywhere writable.
+            // A Windows path the shared VFS files under its `temp` mount -- extension packages
+            // unpack their payload files here and read them straight back (GM8.2 ships message-box
+            // sprites and pass-through shaders this way), so it has to be a path the VFS can parse.
+            #[cfg(target_arch = "wasm32")]
+            None => PathBuf::from(crate::gml::vfs::TEMP_DIRECTORY),
+            #[cfg(not(target_arch = "wasm32"))]
             None => {
                 // read path from tempdir.txt or if that's not possible get std::env::temp_dir()
                 let mut dir = if let Some(path) =
@@ -499,6 +619,16 @@ impl Game {
                     remove_at_end: i.remove_at_end,
                 };
                 i.export(temp_directory.clone(), program_directory.to_string().into())?;
+                // No filesystem to extract to in a browser (the export above is a no-op there) --
+                // register the bytes into the VFS *bundle*, so file_bin_open/file_text_open find
+                // this file. The bundle is the right layer: an Include File ships with the game and
+                // is re-created identically on every launch, so it is not the player's save data.
+                // Seeding it into the same store as save files would let a game "delete" one and
+                // have the deletion outlive the session.
+                #[cfg(target_arch = "wasm32")]
+                if let Some(data) = &i.data {
+                    file::register_bundle_file(&i.name, data);
+                }
                 Ok(i)
             })
             .collect::<Result<Vec<_>, std::io::Error>>()
@@ -596,7 +726,7 @@ impl Game {
         let window_border = !settings.dont_draw_border;
         let window_icons = !settings.dont_show_buttons;
 
-        let connection = ramen::connection::Connection::new()?;
+        let connection = crate::window::connection::Connection::new()?;
         #[cfg(unix)]
         unsafe {
             let display = connection.xdisplay();
@@ -633,6 +763,7 @@ impl Game {
         }
 
         let window = builder.build()?;
+        #[cfg(not(target_arch = "wasm32"))]
         let ffmpeg_recorder = capture_recording.then(|| {
             Command::new("ffmpeg")
                 .arg("-y")
@@ -692,15 +823,19 @@ impl Game {
         );
         for extension in extensions.iter() {
             temp_directory.push(&*String::from_utf8_lossy(extension.folder_name.0.as_ref()));
+            #[cfg(not(target_arch = "wasm32"))]
             std::fs::create_dir_all(&temp_directory)?;
 
             for file in extension.files.iter() {
                 match file.kind {
                     FileKind::DynamicLibrary => {
-                        // DLL - save this to disk then define all the externals in it
+                        // DLL - save this to disk then define all the externals in it. On wasm there is no
+                        // filesystem and no native DLL loading (see game/external's `dummy` backend, which
+                        // never reads this path back), so the write is skipped and only the metadata is used.
                         let dll_name = gml::String::from(file.name.0.clone().as_ref());
                         temp_directory.push(&*String::from_utf8_lossy(dll_name.as_ref()));
 
+                        #[cfg(not(target_arch = "wasm32"))]
                         File::create(&temp_directory)?.write_all(&file.contents)?;
                         for function in file.functions.iter() {
                             let dll = &*temp_directory.to_string_lossy();
@@ -725,13 +860,16 @@ impl Game {
                                     .iter()
                                     .take(function.arg_count as usize)
                                     .map(|x| match x {
-                                        FunctionValueKind::GMReal => external::dll::ValueType::Real,
                                         FunctionValueKind::GMString => external::dll::ValueType::Str,
+                                        // Real is what an unrecognised slot has always behaved as,
+                                        // and the value itself is only carried so the writer can
+                                        // put it back unchanged.
+                                        _ => external::dll::ValueType::Real,
                                     })
                                     .collect::<Vec<_>>(),
                                 type_return: match function.return_type {
-                                    FunctionValueKind::GMReal => external::dll::ValueType::Real,
                                     FunctionValueKind::GMString => external::dll::ValueType::Str,
+                                    _ => external::dll::ValueType::Real,
                                 },
                             }) {
                                 Ok(id) => extension_functions.push(Some(ExtensionFunction::Dll(sym.into(), id))),
@@ -792,11 +930,28 @@ impl Game {
                         }
                     },
                     FileKind::ActionLibrary => (), // Lib - don't think we need to do anything with this
+                    // A kind this crate does not recognise. Carried through the reader so the
+                    // writer can put the value back unchanged; there is nothing to load from it.
+                    FileKind::Unknown(_) => (),
+                    #[cfg(not(target_arch = "wasm32"))]
                     FileKind::Other => {
                         // Other - just save this to disk
                         temp_directory.push(&*String::from_utf8_lossy(file.name.0.as_ref()));
                         let mut f = File::create(&temp_directory)?;
                         f.write_all(&file.contents)?;
+                        temp_directory.pop();
+                    },
+                    // Payload files an extension package ships and then reads back off disk at
+                    // runtime. These are read-only and engine-provided, so they go into the VFS
+                    // *bundle* under the temp mount -- the same place `temp_directory` now points.
+                    //
+                    // Dropping them would cost real games: GM8.2 extensions ship their message-box
+                    // sprites, pass-through shaders and DLLs this way and load them from
+                    // `temp_directory + "\gm82\..."`.
+                    #[cfg(target_arch = "wasm32")]
+                    FileKind::Other => {
+                        temp_directory.push(&*String::from_utf8_lossy(file.name.0.as_ref()));
+                        file::register_bundle_file(&temp_directory.to_string_lossy(), &file.contents);
                         temp_directory.pop();
                     },
                 }
@@ -812,8 +967,15 @@ impl Game {
                 o.map(|b| {
                     use asset::sound::FileType;
                     use gm8exe::asset::sound::SoundKind;
+                    // GM8 stores the source file's extension verbatim, so its case is whatever the
+                    // author's file had on disk -- `.MID` and `.WAV` are as common as the lowercase
+                    // spellings. The real runner matches these against Windows filenames and so
+                    // never cared about case; a byte-exact match here did, which silenced every
+                    // sound in such a game and blamed an "unsupported format" that is in fact
+                    // supported.
+                    let extension = b.extension.0.to_ascii_lowercase();
                     let handle = match b.data {
-                        Some(data) => match b.extension.0.as_ref() {
+                        Some(data) => match extension.as_slice() {
                             b".mp3" => match audio.add_mp3(data, sound_id as i32) {
                                 Some(x) => FileType::Mp3(x),
                                 None => {
@@ -840,7 +1002,39 @@ impl Game {
                                     FileType::None
                                 },
                             },
-                            _ => FileType::None,
+                            // MIDI is a score, not encoded audio: it is rendered through a
+                            // SoundFont rather than decoded. GM8 games embed it for music far more
+                            // often than the two decodable formats suggest -- Not Another Magic
+                            // Tower Game's battle themes are MIDI and nothing else in it is, which
+                            // was the whole of "the battle music doesn't play".
+                            //
+                            // wasm only. The native backend is a different module, and its `.mid`
+                            // handling is left as upstream has it.
+                            #[cfg(target_arch = "wasm32")]
+                            b".mid" | b".midi" | b".rmi" => {
+                                match audio.add_midi(data, sound_id as i32, b.volume, b.kind == SoundKind::Multimedia) {
+                                    Some(x) => FileType::Wav(x),
+                                    None => FileType::None,
+                                }
+                            },
+                            // Anything else has no decoder here. Say so rather than dropping it
+                            // silently, which is what made the MIDI case above take a decompile to
+                            // find: the game simply had no music and nothing said why.
+                            _ => {
+                                // Reports the extension as the game spells it, not as it was
+                                // folded above: the two differing is itself worth seeing.
+                                #[cfg(target_arch = "wasm32")]
+                                web_sys::console::warn_1(
+                                    &format!(
+                                        "unsupported sound format: '{}' is {} -- this sound \
+                                         will be silent.",
+                                        String::from_utf8_lossy(b.name.0.as_ref()),
+                                        String::from_utf8_lossy(b.extension.0.as_ref()),
+                                    )
+                                    .into(),
+                                );
+                                FileType::None
+                            },
                         },
                         None => FileType::None,
                     };
@@ -1079,18 +1273,15 @@ impl Game {
                         for ((i, map), input) in events.iter_mut().enumerate().zip(b.events.iter()) {
                             map.reserve(input.len());
                             for (sub, actions) in input {
-                                map.insert(
-                                    *sub,
-                                    match Tree::from_list(actions, &mut compiler) {
-                                        Ok(t) => Rc::new(RefCell::new(t)),
-                                        Err(e) => {
-                                            return Err(format!(
-                                                "Compiler error in object {} event {},{}: {}",
-                                                b.name, i, sub, e
-                                            ))
-                                        },
+                                map.insert(*sub, match Tree::from_list(actions, &mut compiler) {
+                                    Ok(t) => Rc::new(RefCell::new(t)),
+                                    Err(e) => {
+                                        return Err(format!(
+                                            "Compiler error in object {} event {},{}: {}",
+                                            b.name, i, sub, e
+                                        ))
                                     },
-                                );
+                                });
                             }
                         }
                         Ok(Box::new(Object {
@@ -1270,6 +1461,13 @@ impl Game {
 
         renderer.push_atlases(atlases)?;
 
+        // GML kernel functions decode their `string`-typed arguments via `_arg_into!` in
+        // `gml/kernel.rs`, which has no `self` in scope at every call site (some are plain free
+        // functions) and so can't call `Game::decode_str` directly. Stash the same
+        // encoding/version pair it needs in thread-local state instead -- see
+        // `decode_gml_string` below, which `_arg_into!` calls instead of assuming UTF-8.
+        set_string_encoding(encoding, gm_version);
+
         let mut game = Self {
             compiler,
             text_files: HandleArray::new(),
@@ -1353,17 +1551,21 @@ impl Game {
             included_files,
             gm_version,
             open_ini: None,
+            registry: None,
+            registry_root: 0,
             open_file: None,
             file_finder: None,
             clock: GameClock::SpoofedNanos(0), // to avoid accessing the system timer for now
             frame_limiter,
             frame_limit_at,
+            #[cfg(not(target_arch = "wasm32"))]
             ffmpeg_recorder,
             fps: 0,
             frame_counter: 0,
             parameters: game_arguments,
             encoding,
             esc_close_game: settings.esc_close_game,
+            f4_fullscreen_toggle: settings.f4_fullscreen_toggle,
             score_capt_d: true,
             has_set_show_score: false,
             lives_capt_d: false,
@@ -1377,6 +1579,7 @@ impl Game {
             close_requested: false,
             scaling,
             play_type,
+            #[cfg(feature = "tas")]
             stored_events: VecDeque::new(),
 
             // load_room sets this
@@ -1391,6 +1594,8 @@ impl Game {
             window_offset_spoof: (0, 0),
             window_sizeable: settings.allow_resize,
             window_visible: true,
+
+            loopback: Default::default(),
         };
 
         game.temp_directory = game.encode_str_maybe(temp_directory.to_str().unwrap()).unwrap().into_owned().into();
@@ -1513,13 +1718,23 @@ impl Game {
         }
     }
 
-    fn resize_window(&mut self, width: u32, height: u32) {
+    pub(crate) fn resize_window(&mut self, width: u32, height: u32) {
+        self.resize_region(width, height, true)
+    }
+
+    /// Resizes the region the game draws into. `adapt_window` is whether the window follows it --
+    /// always true when a room changes, and the third argument of `window_set_region_size`, which
+    /// is the only way a game can grow its drawing area without touching the window.
+    pub(crate) fn resize_region(&mut self, width: u32, height: u32, adapt_window: bool) {
         // GameMaker only actually resizes the window if the expected (unscaled) size is changing.
         if self.unscaled_width != width || self.unscaled_height != height {
             self.unscaled_width = width;
             self.unscaled_height = height;
-            self.window_inner_size = (width, height);
             self.renderer.resize_framebuffer(width, height, false);
+            if !adapt_window {
+                return
+            }
+            self.window_inner_size = (width, height);
             let (width, height) = match self.scaling {
                 Scaling::Fixed(scale) => ((f64::from(width) * scale) as u32, (f64::from(height) * scale) as u32),
                 _ => (width, height),
@@ -1535,6 +1750,23 @@ impl Game {
         match self.gm_version {
             Version::GameMaker8_0 => self.encoding.decode_without_bom_handling(string).0,
             Version::GameMaker8_1 => String::from_utf8_lossy(string),
+        }
+    }
+
+    /// The game's bytes for this text, with anything its encoding cannot hold written as `?`.
+    ///
+    /// For text that came from *outside* the game -- what a player typed into a dialog -- which is
+    /// the only text whose characters the game's encoding was never chosen to cover. Windows does
+    /// the same when GameMaker hands Unicode to an ANSI control: an unmappable character becomes
+    /// the codepage's default character, which is `?`.
+    ///
+    /// The alternative, and what the dialogs did before, was `encode_str_maybe(..).unwrap_or_default()`
+    /// -- so one accent typed into a Shift-JIS game threw away the whole line, leaving an empty
+    /// string and nothing anywhere to say why.
+    pub fn encode_str_lossy<'a>(&self, utf8: &'a str) -> Cow<'a, [u8]> {
+        match self.gm_version {
+            Version::GameMaker8_0 => encode_lossy(self.encoding, utf8),
+            Version::GameMaker8_1 => Cow::from(utf8.as_bytes()),
         }
     }
 
@@ -1739,6 +1971,7 @@ impl Game {
         // Run room start event for each instance
         self.run_other_event(4)?;
 
+        #[cfg(not(target_arch = "wasm32"))]
         if self.play_type != PlayType::Record {
             let w: i32 = self.window_inner_size.0.try_into().unwrap();
             let h: i32 = self.window_inner_size.1.try_into().unwrap();
@@ -1786,6 +2019,17 @@ impl Game {
                     // Most of the builtin transitions seem to run at around 120FPS in our tests, so let's go with that.
                     const TRANSITION_FRAMERATE: u32 = 120;
                     const FRAME_TIME: Duration = Duration::from_nanos(1_000_000_000 / TRANSITION_FRAMERATE as u64);
+                    // Not on wasm: `Instant::now()` panics there ("time not implemented on this
+                    // platform"), and a panic in wasm ends the run -- so every game that set a
+                    // builtin room transition died on its first room change in the browser.
+                    //
+                    // Nothing is lost by dropping the pacing. This whole loop is one synchronous
+                    // block, so the browser never composites the intermediate frames it presents;
+                    // pacing them out over 81 * 8ms would only freeze the tab for two thirds of a
+                    // second and still show a single jump to the finished room. Animating a
+                    // transition for real would mean driving these steps from the rAF loop, which
+                    // is a much bigger change than this crash deserves.
+                    #[cfg(not(target_arch = "wasm32"))]
                     let mut current_time = Instant::now();
                     let perspective = self.renderer.get_perspective();
                     // the fps of the room transition minus 1 so that we don't dump a frame immediately.
@@ -1806,16 +2050,22 @@ impl Game {
                         transition(self, trans_surf_old, trans_surf_new, width as _, height as _, progress)?;
                         if self.play_type != PlayType::Record {
                             self.renderer.present(width, height, self.scaling);
-                            self.capture_recording_frame(&mut current_frame_time, TRANSITION_FRAMERATE);
-                            let diff = current_time.elapsed();
-                            if let Some(dur) = FRAME_TIME.checked_sub(diff) {
-                                gml::datetime::sleep(dur);
+                            #[cfg(not(target_arch = "wasm32"))]
+                            {
+                                self.capture_recording_frame(&mut current_frame_time, TRANSITION_FRAMERATE);
+                                let diff = current_time.elapsed();
+                                if let Some(dur) = FRAME_TIME.checked_sub(diff) {
+                                    gml::datetime::sleep(dur);
+                                }
                             }
                         }
                         if let GameClock::SpoofedNanos(t) = &mut self.clock {
                             *t += FRAME_TIME.as_nanos();
                         }
-                        current_time += FRAME_TIME;
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
+                            current_time += FRAME_TIME;
+                        }
                     }
                     if self.surface_fix {
                         self.renderer.set_perspective(perspective);
@@ -1853,6 +2103,12 @@ impl Game {
         use std::io::Read;
         self.input.keyboard_clear_all();
         self.input.mouse_clear_all();
+        // No filesystem in a browser -- route through the same virtual filesystem the generic
+        // file_bin_*/file_text_* GML API uses (see gml/file.rs) instead of a real fs::File.
+        #[cfg(target_arch = "wasm32")]
+        let mut file = file::open_virtual_read(&path.to_string_lossy())
+            .ok_or_else(|| gml::Error::FunctionError("game_load".into(), "save file not found".into()))?;
+        #[cfg(not(target_arch = "wasm32"))]
         let mut file = std::fs::File::open(path)
             .map(std::io::BufReader::new)
             .map_err(|e| gml::Error::FunctionError("game_load".into(), format!("{}", e)))?;
@@ -1876,6 +2132,12 @@ impl Game {
         if self.esc_close_game && self.input.keyboard_lastkey() == input::Button::Escape as u8 {
             self.scene_change = Some(SceneChange::End);
             return Ok(());
+        }
+
+        // Stock GM8 runner behavior: F4 toggles fullscreen itself, independent of any GML the game
+        // runs (see fullscreen.rs for the browser bridge this shares with window_set_fullscreen).
+        if self.f4_fullscreen_toggle && self.input.keyboard_check_pressed(input::Button::F4 as u8) {
+            crate::fullscreen::set(!crate::fullscreen::get());
         }
 
         // Update xprevious and yprevious for all instances
@@ -2091,6 +2353,13 @@ impl Game {
                         Event::ScrollDown => self.input.mouse_scroll_down(),
                         Event::Resize((width, height)) => self.window_inner_size = (width as _, height as _),
                         Event::CloseRequest => self.close_requested = true,
+                        // `Event::FocusLost` only exists on wasm (see its doc comment) -- ramen's
+                        // real event enum has no such variant, so this arm can't be unconditional.
+                        #[cfg(target_arch = "wasm32")]
+                        Event::FocusLost => {
+                            self.input.keyboard_clear_all();
+                            self.input.mouse_clear_all();
+                        },
                         _ => (),
                     }
                 }
@@ -2119,7 +2388,12 @@ impl Game {
                     .collect::<Vec<_>>()
             };
             match &external.call {
-                external::Call::Dummy(x) => Ok(x.clone()),
+                external::Call::Dummy { value, unsupported } => {
+                    if *unsupported {
+                        external::warn_unsupported_once(&external.signature.dll, &external.signature.symbol);
+                    }
+                    Ok(value.clone())
+                },
                 &external::Call::Emulated(func) => func.invoke(self, context, args),
                 external::Call::Native(_) => {
                     let args = convert_args();
@@ -2220,15 +2494,18 @@ impl Game {
 
         let mut time_now = Instant::now();
         let mut time_last = time_now;
+        #[cfg(not(target_arch = "wasm32"))]
         let mut current_frame_time: u32 = 0;
         loop {
             self.process_window_events();
 
             self.frame()?;
 
+            #[cfg(not(target_arch = "wasm32"))]
             self.capture_recording_frame(&mut current_frame_time, self.room.speed);
             if let Some(SceneChange::End) = self.scene_change {
                 println!("game ending");
+                #[cfg(not(target_arch = "wasm32"))]
                 if let Some(recorder) = self.ffmpeg_recorder.take() {
                     self.stop_recording_capture(recorder);
                 }
@@ -2265,6 +2542,7 @@ impl Game {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn capture_recording_frame(&mut self, current_frame_time: &mut u32, game_speed: u32) {
         if let Some(ffmpeg_recorder) = self.ffmpeg_recorder.as_mut() {
             while *current_frame_time < 50 {
@@ -2283,6 +2561,7 @@ impl Game {
         }
     }
 
+    #[cfg(feature = "tas")]
     pub fn set_input_from_frame(&mut self, frame: &crate::game::replay::Frame) {
         for ev in frame.events.iter() {
             self.stored_events.push_back(ev.clone());
@@ -2291,7 +2570,11 @@ impl Game {
         if let Some(seed) = &frame.new_seed {
             match seed {
                 FrameRng::Override(new_seed) => self.rand.set_seed(*new_seed),
-                FrameRng::Increment(count) => for _ in 0..*count { self.rand.cycle(); },
+                FrameRng::Increment(count) => {
+                    for _ in 0..*count {
+                        self.rand.cycle();
+                    }
+                },
             }
         }
 
@@ -2313,6 +2596,7 @@ impl Game {
     }
 
     // Replays some recorded inputs to the game
+    #[cfg(feature = "tas")]
     pub fn replay(
         mut self,
         replay: Replay,
@@ -2366,7 +2650,11 @@ impl Game {
                     if start_save_path.is_some() {
                         // Store the current framebuffer since it's used by the savestate.
                         // Only matters if there already is a framebuffer stored which is the case when loading a savestate.
-                        self.renderer.resize_framebuffer(self.renderer.stored_size().0, self.renderer.stored_size().1, true);
+                        self.renderer.resize_framebuffer(
+                            self.renderer.stored_size().0,
+                            self.renderer.stored_size().1,
+                            true,
+                        );
                     }
                     let render_state = self.renderer.state();
                     let mut new_replay = replay.clone();
@@ -2442,6 +2730,7 @@ impl Game {
         };
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn stop_recording_capture(&mut self, recorder: Child) {
         recorder.wait_with_output().expect("video recorder should close");
         self.audio.stop_audio_capture();
@@ -2493,6 +2782,23 @@ impl Game {
         }
     }
 
+    /// Selects an instance's effective mask sprite (`mask_index` if set, else `sprite_index`),
+    /// refreshes its bbox against it (a no-op if already fresh -- see `Instance::update_bbox`),
+    /// and returns both. Shared by `check_collision`'s precise test and the broad-phase spatial
+    /// grid in `run_collisions` (`game/events.rs`), so there's exactly one implementation of
+    /// "what bbox does this instance currently have" -- letting the grid bucket by the same
+    /// values `check_collision`'s own AABB check uses avoids the two silently drifting apart.
+    pub fn instance_bbox(&self, handle: usize) -> ((i32, i32, i32, i32), Option<&Sprite>) {
+        let inst = self.room.instance_list.get(handle);
+        let sprite = self
+            .assets
+            .sprites
+            .get_asset(if inst.mask_index.get() < 0 { inst.sprite_index.get() } else { inst.mask_index.get() })
+            .map(|x| x.as_ref());
+        inst.update_bbox(sprite);
+        ((inst.bbox_left.get(), inst.bbox_top.get(), inst.bbox_right.get(), inst.bbox_bottom.get()), sprite)
+    }
+
     // Checks for collision between two instances
     pub fn check_collision(&self, i1: usize, i2: usize) -> bool {
         // Don't check for collision with yourself
@@ -2502,25 +2808,11 @@ impl Game {
         // Get the sprite masks we're going to use and update instances' bbox vars
         let inst1 = self.room.instance_list.get(i1);
         let inst2 = self.room.instance_list.get(i2);
-        let sprite1 = self
-            .assets
-            .sprites
-            .get_asset(if inst1.mask_index.get() < 0 { inst1.sprite_index.get() } else { inst1.mask_index.get() })
-            .map(|x| x.as_ref());
-        let sprite2 = self
-            .assets
-            .sprites
-            .get_asset(if inst2.mask_index.get() < 0 { inst2.sprite_index.get() } else { inst2.mask_index.get() })
-            .map(|x| x.as_ref());
-        inst1.update_bbox(sprite1);
-        inst2.update_bbox(sprite2);
+        let (bbox1, sprite1) = self.instance_bbox(i1);
+        let (bbox2, sprite2) = self.instance_bbox(i2);
 
         // First, an AABB. This is specifically matching how it's coded in GM8 runner.
-        if inst1.bbox_right < inst2.bbox_left
-            || inst2.bbox_right < inst1.bbox_left
-            || inst1.bbox_bottom < inst2.bbox_top
-            || inst2.bbox_bottom < inst1.bbox_top
-        {
+        if bbox1.2 < bbox2.0 || bbox2.2 < bbox1.0 || bbox1.3 < bbox2.1 || bbox2.3 < bbox1.1 {
             return false;
         }
 
@@ -3038,11 +3330,7 @@ impl Game {
             },
             instance_id => {
                 if let Some(handle) = self.room.instance_list.get_by_instid(instance_id) {
-                    if self.room.instance_list.get(handle).is_active() && pred(handle) {
-                        Some(handle)
-                    } else {
-                        None
-                    }
+                    if self.room.instance_list.get(handle).is_active() && pred(handle) { Some(handle) } else { None }
                 } else {
                     None
                 }

@@ -1,17 +1,17 @@
 use crate::{
     game::{
+        Game, GameClock, SceneChange,
         recording::{
+            InputMode, KeyState,
             keybinds::Binding,
             window::{EmulatorContext, Window},
-            InputMode, KeyState,
         },
         replay::{self, Frame, FrameRng},
-        Game, GameClock, SceneChange,
     },
     imgui_utils::{UiCustomFunction, Vec2},
 };
 
-use super::popup_dialog::{string_input::RNGSelect, Dialog, DialogState};
+use super::popup_dialog::{Dialog, DialogState, string_input::RNGSelect};
 
 pub struct ControlWindow {
     seed_text: String,
@@ -44,16 +44,16 @@ impl Window for ControlWindow {
 
             if (info.frame.button_with_size("Advance", [content_width, 20.0])
                 || info.keybind_pressed(Binding::Advance)
-                || run_until_frame
-              ) && *info.game_running
+                || run_until_frame)
+                && *info.game_running
                 && info.err_string.is_none()
             {
                 self.advance_frame(info);
             }
 
             if (info.frame.button_with_size("Quick Save", [content_width, 20.0])
-                || info.keybind_pressed(Binding::Quicksave)
-              ) && *info.game_running
+                || info.keybind_pressed(Binding::Quicksave))
+                && *info.game_running
                 && info.err_string.is_none()
             {
                 info.savestate_save(info.config.quicksave_slot);
@@ -316,11 +316,13 @@ impl ControlWindow {
 
         info.game.renderer.resize_framebuffer(info.config.ui_width.into(), info.config.ui_height.into(), true);
         info.game.renderer.set_view(
-            0, 0,
+            0,
+            0,
             info.config.ui_width.into(),
             info.config.ui_height.into(),
             0.0,
-            0, 0,
+            0,
+            0,
             info.config.ui_width.into(),
             info.config.ui_height.into(),
         );

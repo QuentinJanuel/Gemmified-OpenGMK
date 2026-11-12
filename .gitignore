@@ -9,3 +9,13 @@
 /.idea/
 /.vscode/
 /.project/
+
+# Vendored by reference, not committed: ~31MiB of sample data pinned in
+# assets/soundfont/soundfont.json and fetched by scripts/fetch-soundfont.mjs.
+/assets/soundfont/*.sf2
+
+# build output
+/node_modules/
+/dist/
+/plugin/
+/*.zip

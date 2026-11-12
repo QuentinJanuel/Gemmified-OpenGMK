@@ -2,7 +2,7 @@
 
 #![cfg(target_os = "windows")]
 
-use super::{wgl_ffi::*, OPENGL_VERSION};
+use super::{OPENGL_VERSION, wgl_ffi::*};
 
 use ramen::{connection::Connection, window::Window};
 use std::{

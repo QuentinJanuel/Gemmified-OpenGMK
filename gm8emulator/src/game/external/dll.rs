@@ -1,6 +1,6 @@
-use serde::{de, ser, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de, ser};
 use std::{
-    alloc::{self, alloc, dealloc, Layout},
+    alloc::{self, Layout, alloc, dealloc},
     fmt,
     ops::Drop,
     ptr::NonNull,

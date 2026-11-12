@@ -1,0 +1,20 @@
+Gemmified-OpenGMK
+=================
+
+A fork of OpenGMK <https://github.com/OpenGMK/OpenGMK> that builds the GameMaker 8
+emulator for WebAssembly and packages it as a GEMS-protocol plugin.
+
+OpenGMK is licensed GPL-2.0-only and so is this fork; see LICENCE.md. Copyright in
+the original work is retained by the OpenGMK authors and contributors.
+
+Modifications in this fork are Copyright (C) 2026 Dapper Mink and are licensed
+GPL-2.0-only on the same terms.
+
+Third-party component
+---------------------
+
+The GeneralUser GS SoundFont by S. Christian Collins
+<https://github.com/mrbumpy409/GeneralUser-GS> is not part of this repository's
+source: it is downloaded at build time (assets/soundfont/soundfont.json pins its
+bytes) and published next to each release. It is distributed under its own
+licence, reproduced in assets/soundfont/LICENSE.txt, not under GPL-2.0-only.

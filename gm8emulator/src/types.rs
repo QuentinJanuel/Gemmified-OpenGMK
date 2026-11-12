@@ -1,7 +1,7 @@
 use serde::{
+    Deserialize, Serialize,
     de::{self, SeqAccess, Visitor},
     ser::{self, SerializeSeq},
-    Deserialize, Serialize,
 };
 use std::{any::type_name, fmt, marker::PhantomData, mem, ops, ptr};
 

@@ -1,0 +1,30 @@
+[package]
+name = "opengmk-host"
+version = "0.0.0"
+authors = ["Dapper Mink"]
+license = "GPL-2.0-only"
+edition = "2021"
+rust-version = "1.77"
+publish = false
+description = "The host realm's half of OpenGMK's GEMS plugin: the session, the AudioContext and the dialog buffer"
+
+[lib]
+crate-type = ["cdylib"]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "=0.2.114"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    "AudioContext",
+    "BaseAudioContext",
+    "Document",
+    "ErrorEvent",
+    "EventTarget",
+    "MessageEvent",
+    "Window",
+    "Worker",
+    "WorkerOptions",
+    "WorkerType",
+    "console",
+] }

@@ -7,9 +7,9 @@ use std::{
     io::Write,
     process::{self, Child, Stdio},
     sync::{
+        Arc,
         atomic::{AtomicU32, Ordering},
         mpsc::{self, Receiver, Sender},
-        Arc,
     },
 };
 use udon::{

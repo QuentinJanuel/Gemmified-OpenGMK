@@ -1,7 +1,7 @@
 #![cfg(not(all(target_os = "windows", target_arch = "x86")))]
 
 use super::dll;
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use dll::PROTOCOL_VERSION;
 use serde::de;
 use std::{
@@ -80,7 +80,8 @@ impl ChildProcess {
                 .stdin(process::Stdio::piped())
                 .stdout(process::Stdio::piped())
                 .spawn()
-        }.map_err(|e| format!("failed to spawn child process: {}", e))?;
+        }
+        .map_err(|e| format!("failed to spawn child process: {}", e))?;
         let stdin = child.stdin.take().unwrap();
         let mut stdout = child.stdout.take().unwrap();
         // make sure we're talking to the right version

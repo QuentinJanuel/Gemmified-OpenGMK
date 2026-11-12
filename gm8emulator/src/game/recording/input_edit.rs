@@ -1,9 +1,9 @@
 use crate::{
     game::{
         recording::{
+            KeyState,
             keybinds::Binding,
             window::{EmulatorContext, Openable, Window},
-            KeyState,
         },
         replay::{FrameRng, Input, Replay},
     },
@@ -11,7 +11,7 @@ use crate::{
     input::Button,
 };
 
-use super::popup_dialog::{string_input::RNGSelect, Dialog, DialogState};
+use super::popup_dialog::{Dialog, DialogState, string_input::RNGSelect};
 use imgui::*;
 
 #[derive(PartialEq, Eq)]
@@ -67,12 +67,7 @@ struct RowColorStack<'a> {
 
 impl RowColorStack<'_> {
     fn new(ui: &Ui) -> RowColorStack {
-        RowColorStack {
-            ui,
-            row_color: None,
-            row_color_alt: None,
-            last_table_color: TableColor::NONE
-        }
+        RowColorStack { ui, row_color: None, row_color_alt: None, last_table_color: TableColor::NONE }
     }
 
     fn drop_current_colors(&mut self) {
@@ -333,8 +328,11 @@ impl Openable<Self> for InputEditWindow {
 }
 
 impl InputEditWindow {
-    const ADDITIONAL_COLUMNS: usize = 3; // Frame counter, RNG Seed and Mouse columns
-    const ADDITIONAL_COLUMNS_INFRONT: usize = 1; // How many of the above column are in front of all the key buttons (only Frame column)
+    const ADDITIONAL_COLUMNS: usize = 3;
+    // Frame counter, RNG Seed and Mouse columns
+    const ADDITIONAL_COLUMNS_INFRONT: usize = 1;
+
+    // How many of the above column are in front of all the key buttons (only Frame column)
 
     fn new() -> Self {
         Self {
@@ -403,13 +401,7 @@ impl InputEditWindow {
     }
 
     fn display_context_menu(&mut self, info: &mut EmulatorContext) -> bool {
-        let EmulatorContext {
-            frame,
-            replay,
-            new_mouse_pos,
-            setting_mouse_pos,
-            ..
-        } = info;
+        let EmulatorContext { frame, replay, new_mouse_pos, setting_mouse_pos, .. } = info;
 
         if let Some(key_index) = self.context_menu_indices.1 {
             // Context menu is to modify input, show the key context menu
@@ -642,15 +634,8 @@ impl InputEditWindow {
 
     fn draw_input_rows(&mut self, info: &mut EmulatorContext, row_color_stack: &mut RowColorStack) {
         let set_mouse_bind_pressed = info.keybind_pressed(Binding::SetMouse);
-        
-        let EmulatorContext {
-            replay,
-            frame,
-            config,
-            new_mouse_pos,
-            setting_mouse_pos,
-            ..
-        } = info;
+
+        let EmulatorContext { replay, frame, config, new_mouse_pos, setting_mouse_pos, .. } = info;
 
         let mouse_pos = frame.mouse_pos();
 
@@ -660,7 +645,8 @@ impl InputEditWindow {
         let clipped_above = (f32::max(self.scroll_y - TABLE_CLIPPING, 0.0) / TOTAL_INPUT_TABLE_HEIGHT).floor();
         let clipped_below =
             (f32::min(self.scroll_y + visible_height + TABLE_CLIPPING, float_count * TOTAL_INPUT_TABLE_HEIGHT)
-                / TOTAL_INPUT_TABLE_HEIGHT).floor();
+                / TOTAL_INPUT_TABLE_HEIGHT)
+                .floor();
 
         if clipped_above > 0.0 {
             // placeholder row for everything above the visible region. To make sure the size stays the same.
@@ -819,7 +805,8 @@ impl InputEditWindow {
             // If we clicked on a mouse input we haven't reached yet
             if i >= config.current_frame {
                 if (frame.is_mouse_clicked(imgui::MouseButton::Left) && mouse_hovered) // If we left clicked and are hovering this button
-                    || (i == config.current_frame && set_mouse_bind_pressed) // or it's the next frame to be run and we used the keybind
+                    || (i == config.current_frame && set_mouse_bind_pressed)
+                // or it's the next frame to be run and we used the keybind
                 {
                     **setting_mouse_pos = true;
                     **new_mouse_pos = Some((current_frame.mouse_x, current_frame.mouse_y));
@@ -935,11 +922,7 @@ impl InputEditWindow {
 
             // update all key states for the first non-deleted frame to match the previous frame.
             for key in 0..self.keys.len() {
-                let start_pressed = if start == 0 {
-                    false
-                } else {
-                    self.states[start-1][key].ends_in_press()
-                };
+                let start_pressed = if start == 0 { false } else { self.states[start - 1][key].ends_in_press() };
 
                 let state = self.update_keystate_front(start, key, start_pressed).clone();
                 self.update_replay(start, key, replay, state);

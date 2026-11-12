@@ -35,6 +35,7 @@ impl IncludedFile {
         Ok(())
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn export_to(&mut self, path: &Path) -> std::io::Result<()> {
         if let Some(data) = self.data.as_ref() {
             if self.overwrite || !path.exists() {
@@ -44,6 +45,12 @@ impl IncludedFile {
                 self.data = None;
             }
         }
+        Ok(())
+    }
+
+    // No filesystem to export to in a browser; keep the data in memory rather than discard it.
+    #[cfg(target_arch = "wasm32")]
+    pub fn export_to(&mut self, _path: &Path) -> std::io::Result<()> {
         Ok(())
     }
 }

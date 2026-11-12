@@ -1,5 +1,5 @@
 use crate::gml::Value;
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use lzzzz::lz4;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -34,15 +34,21 @@ pub enum FrameRng {
 impl FrameRng {
     pub fn increase(&mut self) {
         *self = match self {
-            FrameRng::Increment(amount) => FrameRng::Increment(*amount+1),
-            FrameRng::Override(seed) => FrameRng::Override(seed.wrapping_add(1))
+            FrameRng::Increment(amount) => FrameRng::Increment(*amount + 1),
+            FrameRng::Override(seed) => FrameRng::Override(seed.wrapping_add(1)),
         }
     }
 
     pub fn decrease(&mut self) -> bool {
         *self = match self {
-            FrameRng::Increment(amount) => if *amount <= 1 { FrameRng::Increment(0) } else { FrameRng::Increment(*amount-1) }
-            FrameRng::Override(seed) => FrameRng::Override(seed.wrapping_sub(1))
+            FrameRng::Increment(amount) => {
+                if *amount <= 1 {
+                    FrameRng::Increment(0)
+                } else {
+                    FrameRng::Increment(*amount - 1)
+                }
+            },
+            FrameRng::Override(seed) => FrameRng::Override(seed.wrapping_sub(1)),
         };
 
         // Return false if we would not actually change the seed at all (0 increments).
@@ -184,7 +190,7 @@ impl Replay {
     // Mouse position will be the same as the previous frame unless this is the first frame,
     // in which case it will be (0, 0)
     pub fn insert_new_frame(&mut self, index: usize) -> &mut Frame {
-        let (mouse_x, mouse_y) = match self.frames.get(index-1) {
+        let (mouse_x, mouse_y) = match self.frames.get(index - 1) {
             Some(frame) => (frame.mouse_x, frame.mouse_y),
             None => (0, 0),
         };

@@ -47,14 +47,7 @@ impl Window for ConsoleWindow {
     }
 
     fn show_window(&mut self, info: &mut EmulatorContext) {
-        let EmulatorContext {
-            config,
-            frame,
-            game,
-            keybindings,
-            clean_state,
-            ..
-        } = info;
+        let EmulatorContext { config, frame, game, keybindings, clean_state, .. } = info;
 
         frame
             .window(self.name())
@@ -102,9 +95,8 @@ impl Window for ConsoleWindow {
                     Self::TEXTBOX_MIN_WIDTH // Shouldn't really happen since the minimum content width is bigger than the current minimum textbox width
                 });
 
-                let pressed_enter = frame.input_text("##consoleinput", &mut self.input_string)
-                                        .enter_returns_true(true)
-                                        .build();
+                let pressed_enter =
+                    frame.input_text("##consoleinput", &mut self.input_string).enter_returns_true(true).build();
                 if pressed_enter {
                     frame.set_keyboard_focus_here();
                 }

@@ -1,10 +1,10 @@
 use crate::{
     game::{
-        audio::AudioState, draw, external, includedfile::IncludedFile, model::Model, particle,
-        pathfinding::PotentialStepSettings, surface::Surface, transition::UserTransition, Assets,
-        Game, GameClock, Replay, RoomState, Version,
+        Assets, Game, GameClock, Replay, RoomState, Version, audio::AudioState, draw, external,
+        includedfile::IncludedFile, model::Model, particle, pathfinding::PotentialStepSettings, surface::Surface,
+        transition::UserTransition,
     },
-    gml::{self, ds, rand::Random, Compiler},
+    gml::{self, Compiler, ds, rand::Random},
     handleman::HandleList,
     input::Input,
     instance::DummyFieldHolder,
@@ -12,7 +12,7 @@ use crate::{
     render::{RendererState, SavedTexture, Scaling},
     types::{Colour, ID},
 };
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use indexmap::IndexMap;
 use lzzzz::lz4;
 use serde::{Deserialize, Serialize};

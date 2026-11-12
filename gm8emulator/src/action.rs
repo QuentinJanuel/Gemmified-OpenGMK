@@ -1,11 +1,10 @@
 use crate::{
     game::Game,
     gml::{
-        self,
+        self, Context, Value,
         compiler::Compiler,
         mappings,
-        runtime::{Instruction, Node},
-        Context, Value,
+        runtime::{Instruction, Node, name_function_error},
     },
 };
 use gm8exe::asset::CodeAction;
@@ -97,23 +96,23 @@ impl std::fmt::Debug for GmlBody {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         match self {
             GmlBody::ContextFunction(func) => {
-                let (fn_id, fn_name) = mappings::find_function_by_address(func)
-                    .map(|(i, v)| (i+1, v)).unwrap_or((0, "<unknown>"));
+                let (fn_id, fn_name) =
+                    mappings::find_function_by_address(func).map(|(i, v)| (i + 1, v)).unwrap_or((0, "<unknown>"));
                 write!(f, "Body::ContextFunction({}:{})", fn_id, fn_name)
             },
             GmlBody::StateFunction(func) => {
-                let (fn_id, fn_name) = mappings::find_function_by_address(func)
-                    .map(|(i, v)| (i+1, v)).unwrap_or((0, "<unknown>"));
+                let (fn_id, fn_name) =
+                    mappings::find_function_by_address(func).map(|(i, v)| (i + 1, v)).unwrap_or((0, "<unknown>"));
                 write!(f, "Body::StateFunction({}:{})", fn_id, fn_name)
             },
             GmlBody::RoutineFunction(func) => {
-                let (fn_id, fn_name) = mappings::find_function_by_address(func)
-                    .map(|(i, v)| (i+1, v)).unwrap_or((0, "<unknown>"));
+                let (fn_id, fn_name) =
+                    mappings::find_function_by_address(func).map(|(i, v)| (i + 1, v)).unwrap_or((0, "<unknown>"));
                 write!(f, "Body::RoutineFunction({}:{})", fn_id, fn_name)
             },
             GmlBody::ValueFunction(func) => {
-                let (fn_id, fn_name) = mappings::find_function_by_address(func)
-                    .map(|(i, v)| (i+1, v)).unwrap_or((0, "<unknown>"));
+                let (fn_id, fn_name) =
+                    mappings::find_function_by_address(func).map(|(i, v)| (i + 1, v)).unwrap_or((0, "<unknown>"));
                 write!(f, "Body::ValueFunction({}:{})", fn_id, fn_name)
             },
             GmlBody::Code(code) => write!(f, "Body::Code({:?})", code),
@@ -163,8 +162,9 @@ impl Tree {
                                         body: match function {
                                             gml::Function::Runtime(f) => GmlBody::ContextFunction(gml::FunctionPtr(*f)),
                                             gml::Function::Engine(f) => GmlBody::StateFunction(gml::FunctionPtr(*f)),
-                                            gml::Function::Volatile(f) |
-                                            gml::Function::Constant(f) => GmlBody::RoutineFunction(gml::FunctionPtr(*f)),
+                                            gml::Function::Volatile(f) | gml::Function::Constant(f) => {
+                                                GmlBody::RoutineFunction(gml::FunctionPtr(*f))
+                                            },
                                             gml::Function::Pure(f) => GmlBody::ValueFunction(gml::FunctionPtr(*f)),
                                         },
                                         is_condition: action.is_condition,
@@ -411,10 +411,17 @@ impl Game {
                             }
 
                             returned_value = match gml_body {
-                                GmlBody::ContextFunction(f) => f.0(self, &mut context, &arg_values[..args.len()])?,
-                                GmlBody::StateFunction(f) => f.0(self, &arg_values[..args.len()])?,
-                                GmlBody::RoutineFunction(f) => f.0(self, &arg_values[..args.len()])?,
-                                GmlBody::ValueFunction(f) => f.0(&arg_values[..args.len()])?,
+                                GmlBody::ContextFunction(f) => f.0(self, &mut context, &arg_values[..args.len()])
+                                    .map_err(|e| name_function_error(f, e))?,
+                                GmlBody::StateFunction(f) => {
+                                    f.0(self, &arg_values[..args.len()]).map_err(|e| name_function_error(f, e))?
+                                },
+                                GmlBody::RoutineFunction(f) => {
+                                    f.0(self, &arg_values[..args.len()]).map_err(|e| name_function_error(f, e))?
+                                },
+                                GmlBody::ValueFunction(f) => {
+                                    f.0(&arg_values[..args.len()]).map_err(|e| name_function_error(f, e))?
+                                },
                                 GmlBody::Code(code) => {
                                     context.arguments = arg_values;
                                     context.argument_count = args.len();
@@ -436,10 +443,17 @@ impl Game {
                                 }
 
                                 returned_value = match gml_body {
-                                    GmlBody::ContextFunction(f) => f.0(self, &mut context, &arg_values[..args.len()])?,
-                                    GmlBody::StateFunction(f) => f.0(self, &arg_values[..args.len()])?,
-                                    GmlBody::RoutineFunction(f) => f.0(self, &arg_values[..args.len()])?,
-                                    GmlBody::ValueFunction(f) => f.0(&arg_values[..args.len()])?,
+                                    GmlBody::ContextFunction(f) => f.0(self, &mut context, &arg_values[..args.len()])
+                                        .map_err(|e| name_function_error(f, e))?,
+                                    GmlBody::StateFunction(f) => {
+                                        f.0(self, &arg_values[..args.len()]).map_err(|e| name_function_error(f, e))?
+                                    },
+                                    GmlBody::RoutineFunction(f) => {
+                                        f.0(self, &arg_values[..args.len()]).map_err(|e| name_function_error(f, e))?
+                                    },
+                                    GmlBody::ValueFunction(f) => {
+                                        f.0(&arg_values[..args.len()]).map_err(|e| name_function_error(f, e))?
+                                    },
                                     GmlBody::Code(code) => {
                                         context.arguments = arg_values;
                                         context.argument_count = args.len();

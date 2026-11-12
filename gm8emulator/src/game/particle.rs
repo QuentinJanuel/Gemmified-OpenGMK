@@ -3,8 +3,8 @@ use crate::{
     gml::rand::Random,
     math::Real,
     render::{
-        atlas::{AtlasBuilder, AtlasRef},
         BlendType, Renderer,
+        atlas::{AtlasBuilder, AtlasRef},
     },
 };
 use serde::{Deserialize, Serialize};
@@ -1424,11 +1424,8 @@ impl Particle {
                     let frames = asset.frames.len() as i32;
                     let mut subimage = self.subimage;
                     if animat {
-                        subimage += if stretch && self.lifetime > 0 {
-                            frames * self.timer / self.lifetime
-                        } else {
-                            self.timer
-                        }
+                        subimage +=
+                            if stretch && self.lifetime > 0 { frames * self.timer / self.lifetime } else { self.timer }
                     }
                     asset.get_atlas_ref(subimage)
                 } else {
@@ -1600,11 +1597,7 @@ impl Emitter {
         rand: &mut Random,
         types: &dyn GetAsset<Box<ParticleType>>,
     ) {
-        let number = if number < 0 {
-            if rand.next_int(-number as u32) == 0 { 1 } else { return }
-        } else {
-            number
-        };
+        let number = if number < 0 { if rand.next_int(-number as u32) == 0 { 1 } else { return } } else { number };
         for _ in 0..number {
             let (xspawn, yspawn) = loop {
                 let mut xspawn = self.distribution.range(rand, Real::from(0.0), Real::from(1.0));

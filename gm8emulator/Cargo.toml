@@ -7,36 +7,53 @@ edition = "2021"
 rust-version = "1.77"
 default-run = "gm8emulator"
 
+[lib]
+name = "gm8emulator"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
 [build-dependencies]
 gl_generator = "0.14"
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1"
 
+[features]
+default = ["tas"]
+# TAS tooling: recording UI, savestates, replay files. Never needed on wasm.
+tas = ["dep:imgui", "dep:clipboard", "dep:lzzzz"]
+
 [dependencies]
 bincode = "1.3.3"
 byteorder = "1.5"
-clipboard = "0.5"
+clipboard = { version = "0.5", optional = true }
 encoding_rs = "0.8"
 getopts = "0.2"
 getrandom = "0.2"  # 0.3.4
 glob = "0.3"
-gm8exe = { path = "../gm8exe" }
-gml-parser = { path = "../gml-parser", features = ["runner-serde-derives"] }
+# gm8exe and gml-parser live in gm8-lib, the GameMaker 8 format library.
+gm8exe = { git = "https://github.com/QuentinJanuel/gm8-lib", rev = "6b4ca316b8c69eafdc0d7f99397367b1286d9d18" }
+# Direct3D 9 shader bytecode -> GLSL ES, for GM8.2's `shader_*` family. Pure Rust and dependency
+# free, which is what lets it build for wasm32.
+sm3 = { path = "../sm3" }
+gml-parser = { git = "https://github.com/QuentinJanuel/gm8-lib", rev = "6b4ca316b8c69eafdc0d7f99397367b1286d9d18", features = ["runner-serde-derives"] }
 hex = "0.4"
 image = { version = "0.25.6", features = ["bmp", "gif", "ico", "jpeg", "png", "tga", "tiff"], default-features = false }
-imgui = { version = "0.12", features = ["tables-api"] }
+imgui = { version = "0.12", features = ["tables-api"], optional = true }
 indexmap = { version = "2.5.0", features = ["serde"] }  # 2.11.4
-lzzzz = "2.0"
+lzzzz = { version = "2.0", optional = true }
 phf = { version = "0.13", features = ["macros"] }
-ramen = { git = "https://github.com/viriuwu/ramen", features = ["input", "parking-lot"] }
 rect_packer = "0.2"
-rmp3 = { version = "0.3", features = ["float"] }
 rust-ini = "0.21"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_with = { version = "3.16.1", features = ["alloc", "macros"], default-features = false }
-time = { version = "0.3.41", features = ["local-offset", "macros"] }
+time = { version = "0.3.41", features = ["macros"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+ramen = { git = "https://github.com/viriuwu/ramen", features = ["input", "parking-lot"] }
 udon = { git = "https://github.com/Adamcake/udon", features = ["serde-derives", "wav"] }
+rmp3 = { version = "0.3", features = ["float"] }
+time = { version = "0.3.41", features = ["local-offset"] }
 
 [target.'cfg(all(target_os = "windows"))'.dependencies]
 crc32fast = "1.5"
@@ -44,3 +61,60 @@ libffi = "3.1.0"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# MIDI music. GM8 games embed .mid for background music surprisingly often, and MIDI is a score
+# rather than encoded audio -- it needs a synthesiser and an instrument bank, not a decoder. Pure
+# Rust and std-only, so it builds for wasm32-unknown-unknown unchanged. wasm-only on purpose: the
+# native audio backend is a different module, and its `.mid` handling is left as upstream has it.
+# Pinned exactly, and not to the newest: 1.3.7 calls `usize::is_multiple_of`, stabilised in Rust
+# 1.87, while rust-toolchain.toml pins this workspace to 1.77. Bumping it needs the toolchain bumped
+# first, or it fails with five `no method named is_multiple_of` errors from inside the crate.
+rustysynth = "=1.3.0"
+wasm-bindgen = "=0.2.114"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = [
+    "console",
+    "Document",
+    "DomRect",
+    "Element",
+    "EventTarget",
+    "HtmlCanvasElement",
+    "HtmlElement",
+    "OffscreenCanvas",
+    "KeyboardEvent",
+    "MouseEvent",
+    "WheelEvent",
+    "WebGl2RenderingContext",
+    "Window",
+    "Performance",
+    "Storage",
+    "AudioContext",
+    "BaseAudioContext",
+    "AudioBuffer",
+    "AudioBufferSourceNode",
+    "AudioDestinationNode",
+    "AudioNode",
+    "GainNode",
+    "AudioParam",
+    "AddEventListenerOptions",
+    "StereoPannerNode",
+    "DedicatedWorkerGlobalScope",
+    "WorkerGlobalScope",
+    "Response",
+] }
+js-sys = "0.3"
+glow = "0.14"
+console_error_panic_hook = "0.1"
+base64 = "0.22"
+# Pure-Rust only: flate2's default `rust_backend` is miniz_oxide, and the RustCrypto hashes have no
+# C dependency -- anything needing a C toolchain cannot build for wasm32 here (see the rmp3 note).
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+md-5 = "0.10"
+sha1 = "0.10"
+getrandom = { version = "0.2", features = ["js"] }
+# rmp3 (used natively) needs a C toolchain (compiles ffi/minimp3.c via `cc`) with no wasm32 target
+# available in this project's build environment -- symphonia's mp3/ogg/vorbis features are pure
+# Rust instead. `ogg`+`vorbis` back ssound.dll's OGG support (game/external/ssound.rs) -- GM8 itself
+# never uses OGG for its own built-in sounds, only external DLLs like this one do.
+symphonia = { version = "0.5", default-features = false, features = ["mp3", "ogg", "vorbis"] }
