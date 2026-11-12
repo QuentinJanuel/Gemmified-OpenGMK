@@ -1,7 +1,7 @@
 {
   "name": "gemmified-opengmk",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "scripts": {
     "build": "node scripts/fetch-soundfont.mjs && rm -rf dist && cargo build --release --target wasm32-unknown-unknown --lib -p gm8emulator -p opengmk-host --no-default-features && for crate in gm8emulator opengmk_host; do wasm-bindgen --target web --no-typescript --out-dir dist target/wasm32-unknown-unknown/release/$crate.wasm && pnpm exec wasm-opt dist/${crate}_bg.wasm -O2 -o dist/${crate}_bg.wasm || exit 1; done && cp assets/soundfont/GeneralUser-GS.sf2 assets/soundfont/LICENSE.txt dist/ && cp host/plugin.js dist/host.js && cp host/worker.js dist/ && node scripts/write-manifest.mjs",
