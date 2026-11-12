@@ -1,0 +1,59 @@
+name: Build the plugin
+description: Installs the toolchains, then builds and packages the plugin. Optionally checks it first.
+
+inputs:
+  checks:
+    description: Run the format check, clippy and the tests before building.
+    default: "false"
+  version:
+    description: Build as this version. The package.json change is not committed.
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: pnpm
+    - run: pnpm install --frozen-lockfile
+      shell: bash
+
+    - name: Set the version
+      if: inputs.version != ''
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: npm pkg set version="$VERSION"
+
+    # 1.77 is rust-toolchain.toml's channel; the nightly is only for rustfmt's unstable options.
+    - name: Install Rust toolchains
+      shell: bash
+      run: |
+        rustup toolchain install 1.77 --profile minimal --component clippy --target wasm32-unknown-unknown --target wasm32-wasi --no-self-update
+        rustup toolchain install nightly-2026-08-22 --profile minimal --component rustfmt --no-self-update
+
+    - uses: Swatinem/rust-cache@v2
+      with:
+        cache-on-failure: true
+
+    # The CLI must match the wasm-bindgen version Cargo.lock pins exactly.
+    - name: Install wasm-bindgen-cli
+      shell: bash
+      run: |
+        name=wasm-bindgen-0.2.114-x86_64-unknown-linux-musl
+        curl -fsSL "https://github.com/rustwasm/wasm-bindgen/releases/download/0.2.114/$name.tar.gz" | tar -xz -C "$RUNNER_TEMP"
+        echo "$RUNNER_TEMP/$name" >> "$GITHUB_PATH"
+
+    - if: inputs.checks == 'true'
+      shell: bash
+      run: |
+        pnpm run format:check
+        pnpm run lint
+        pnpm run test
+
+    - shell: bash
+      run: |
+        pnpm run build
+        pnpm run package
