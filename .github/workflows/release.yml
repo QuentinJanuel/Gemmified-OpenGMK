@@ -1,6 +1,6 @@
 name: Release
 
-# Started by hand (Actions > Release > Run workflow), from master only. It works out the next version
+# Started by hand (Actions > Release > Run workflow), from downstream only. It works out the next version
 # from the live update feed, builds the plugin as that version, and publishes it:
 #   - the zip goes to https://gemmified-opengmk.dappermink.me/<version>/opengmk-<version>.zip,
 #   - the SoundFont goes next to it (the manifest's asset `url` points there),
@@ -8,7 +8,7 @@ name: Release
 #   - latest.json is replaced to list only that version (scripts/publish-feed.mjs),
 #   - the GitHub release, and with it the v<version> tag, is created on the commit being built,
 #   - last, the earlier versions' objects are deleted (scripts/prune-old-versions.mjs).
-# The Cloudflare secrets live in the `release` environment, which only master can deploy to.
+# The Cloudflare secrets live in the `release` environment, which only downstream can deploy to.
 on:
   workflow_dispatch:
     inputs:
@@ -33,7 +33,7 @@ concurrency:
 
 jobs:
   release:
-    if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/downstream'
     runs-on: ubuntu-latest
     environment: release
     permissions:

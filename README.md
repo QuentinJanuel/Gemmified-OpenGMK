@@ -58,7 +58,7 @@ pnpm format:check   # needs the nightly toolchain pinned in package.json
 ### Releasing
 
 Every pull request is checked by `.github/workflows/pull-request.yml`. A release is started by hand:
-Actions, Release, Run workflow, on `master`. It takes the version from the live feed and increases
+Actions, Release, Run workflow, on `downstream`. It takes the version from the live feed and increases
 the part you choose (patch by default), or takes an exact version. It builds the plugin as that
 version, uploads it, replaces the feed, and creates the `v<version>` tag and GitHub release.
 `package.json`'s version is only a placeholder, so there is never a version-bump commit.
@@ -71,8 +71,9 @@ GM8Decompiler, which the upstream README below describes, now happens in gm8-lib
 ## Relation to OpenGMK
 
 This repository is a fork of [OpenGMK](https://github.com/OpenGMK/OpenGMK). It carries upstream's
-history unchanged, plus a single commit on top. `git diff upstream/master` lists everything this
-fork changes. Here is a summary:
+history unchanged. `master` is upstream's, untouched, and `downstream` (the default branch) is
+where this fork's work lives. `git diff master downstream` lists everything this fork changes.
+Here is a summary:
 
 - `gm8emulator` gains a wasm32 build: WebGL2 rendering, Web Audio with MIDI and tracker music,
   a virtual filesystem, and stand-ins for many GM8 extension DLLs.
