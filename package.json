@@ -1,14 +1,14 @@
 {
   "name": "gemmified-opengmk",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.0.0",
   "type": "module",
   "scripts": {
     "build": "node scripts/fetch-soundfont.mjs && rm -rf dist && cargo build --release --target wasm32-unknown-unknown --lib -p gm8emulator -p opengmk-host --no-default-features && for crate in gm8emulator opengmk_host; do wasm-bindgen --target web --no-typescript --out-dir dist target/wasm32-unknown-unknown/release/$crate.wasm && pnpm exec wasm-opt dist/${crate}_bg.wasm -O2 -o dist/${crate}_bg.wasm || exit 1; done && cp assets/soundfont/GeneralUser-GS.sf2 assets/soundfont/LICENSE.txt dist/ && cp host/plugin.js dist/host.js && cp host/worker.js dist/ && node scripts/write-manifest.mjs",
     "soundfont": "node scripts/fetch-soundfont.mjs",
     "lint": "cargo clippy --target wasm32-unknown-unknown --lib -p gm8emulator -p opengmk-host --no-default-features && cargo clippy --all-targets -p sm3",
     "format": "cargo +nightly-2026-08-22 fmt --all",
-    "test": "cargo test -p sm3 && cargo test -p gm8emulator --lib --no-default-features --target wasm32-wasi && node --test scripts/publish-feed.test.mjs scripts/prune-old-versions.test.mjs",
+    "test": "cargo test -p sm3 && cargo test -p gm8emulator --lib --no-default-features --target wasm32-wasi && node --test scripts/next-version.test.mjs scripts/publish-feed.test.mjs scripts/prune-old-versions.test.mjs",
     "format:check": "cargo +nightly-2026-08-22 fmt --all --check",
     "package": "rm -rf plugin && mkdir plugin && cp -R dist/. plugin/ && rm plugin/GeneralUser-GS.sf2"
   },

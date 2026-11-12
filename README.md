@@ -16,7 +16,7 @@ The feed lists only the latest release, and the host uses it to install the engi
 up to date. It can also carry an optional top-level `icon`, an https URL to
 `https://gemmified-opengmk.dappermink.me/icon.png`.
 
-Each `v<version>` tag publishes the plugin as
+A release publishes the plugin as
 `https://gemmified-opengmk.dappermink.me/<version>/opengmk-<version>.zip` and makes it the only
 version in the feed. Builds of earlier versions are then deleted. The SoundFont that MIDI music
 plays through (about 31 MiB) is not in the zip. It is published next to the zip, at
@@ -54,6 +54,14 @@ pnpm lint       # clippy
 pnpm test       # sm3 natively, gm8emulator on wasm32-wasi via Node, the release scripts
 pnpm format:check   # needs the nightly toolchain pinned in package.json
 ```
+
+### Releasing
+
+Every pull request is checked by `.github/workflows/pull-request.yml`. A release is started by hand:
+Actions, Release, Run workflow, on `master`. It takes the version from the live feed and increases
+the part you choose (patch by default), or takes an exact version. It builds the plugin as that
+version, uploads it, replaces the feed, and creates the `v<version>` tag and GitHub release.
+`package.json`'s version is only a placeholder, so there is never a version-bump commit.
 
 The web build always uses `--no-default-features`, which leaves out the TAS tooling. The
 desktop build and the TAS framework described below come from upstream. This fork keeps the

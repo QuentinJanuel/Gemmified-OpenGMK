@@ -1,0 +1,21 @@
+name: Pull request
+
+# Checks and builds every pull request. Nothing is published from here: releases are started by hand
+# (release.yml).
+on: pull_request
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pull-request-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/build
+        with:
+          checks: "true"
