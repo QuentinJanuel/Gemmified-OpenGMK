@@ -25,6 +25,15 @@ const manifest = {
   assets: [
     { path: SOUNDFONT, bytes: 32319396, url: `${PUBLISHED}/${version}/${SOUNDFONT}`, optional: true },
   ],
+  credits: [
+    {
+      name: "OpenGMK",
+      license: "GPL-2.0-only",
+      url: "https://github.com/QuentinJanuel/Gemmified-OpenGMK",
+      copyright: "Copyright (C) The OpenGMK Project",
+      upstream: "https://github.com/OpenGMK/OpenGMK",
+    },
+  ],
   capabilities: plugin.capabilities,
 };
 
