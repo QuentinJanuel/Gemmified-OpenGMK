@@ -3,6 +3,8 @@
 // touches nothing: both wasm modules load in `create`.
 
 const EXE_RE = /\.(exe|gm81|gmk)$/i;
+// GameMaker Studio's game data: a game that ships it runs on a Studio runner, whose .exe is not GM8's.
+const STUDIO_DATA_RE = /(^|\/)(data\.win|game\.(unx|ios|droid))$/i;
 
 export default {
   id: "opengmk",
@@ -18,8 +20,10 @@ export default {
     ],
   },
 
-  /** By extension only: a GameMaker 8 runner is an ordinary .exe until it is parsed. */
+  /** By extension only: a GameMaker 8 runner is an ordinary .exe until it is parsed. A game that
+   *  carries Studio data is declined, since its .exe is the Studio runner. */
   async accepts(files) {
+    if (files.files.some((file) => STUDIO_DATA_RE.test(file.path))) return null;
     const entry = files.files.find((file) => EXE_RE.test(file.path));
     return entry ? { confidence: "probable", entry: entry.path } : null;
   },

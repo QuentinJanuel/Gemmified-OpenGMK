@@ -8,7 +8,7 @@
     "soundfont": "node scripts/fetch-soundfont.mjs",
     "lint": "cargo clippy --target wasm32-unknown-unknown --lib -p gm8emulator -p opengmk-host --no-default-features && cargo clippy --all-targets -p sm3",
     "format": "cargo +nightly-2026-08-22 fmt --all",
-    "test": "cargo test -p sm3 && cargo test -p gm8emulator --lib --no-default-features --target wasm32-wasi && node --test scripts/next-version.test.mjs scripts/publish-feed.test.mjs scripts/prune-old-versions.test.mjs",
+    "test": "cargo test -p sm3 && cargo test -p gm8emulator --lib --no-default-features --target wasm32-wasi && node --test host/plugin.test.mjs scripts/next-version.test.mjs scripts/publish-feed.test.mjs scripts/prune-old-versions.test.mjs",
     "format:check": "cargo +nightly-2026-08-22 fmt --all --check",
     "package": "rm -rf plugin && mkdir plugin && cp -R dist/. plugin/ && rm plugin/GeneralUser-GS.sf2"
   },
