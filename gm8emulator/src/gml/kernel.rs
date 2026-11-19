@@ -7553,12 +7553,13 @@ impl Game {
             self.input.keyboard_clear_all();
             self.input.mouse_clear_all();
             // Re-encode the returned text into the game's own charset (Shift-JIS etc.), same as the
-            // rest of GML string handling. Lossy, because this is the one string a *player* chose
-            // the characters of: an accent typed into a Shift-JIS game becomes `?`, the way the
-            // real runner's ANSI dialog would write it, rather than emptying the whole line.
+            // rest of GML string handling. This is the one string a *player* chose the characters
+            // of, so an accent typed into a Shift-JIS game cannot fit: it becomes a `&#233;`
+            // reference (the real runner's ANSI dialog writes `?`), which Http Dll turns back into
+            // the character when the game sends the text on -- a chat message keeps its accents.
             // Cancel keeps the default.
             if index == 1 {
-                Ok(self.encode_str_lossy(&value).as_ref().into())
+                Ok(crate::game::encode_gml_string_ncr(&value).as_ref().into())
             } else {
                 Ok(self.encode_str_lossy(default.as_ref()).as_ref().into())
             }

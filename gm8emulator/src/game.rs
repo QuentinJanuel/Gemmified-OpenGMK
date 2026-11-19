@@ -405,7 +405,18 @@ fn encode_lossy<'a>(encoding: &'static Encoding, utf8: &'a str) -> Cow<'a, [u8]>
 
 #[cfg(test)]
 mod encoding_tests {
-    use super::encode_lossy;
+    use super::{encode_lossy, unescape_ncr};
+
+    #[test]
+    fn unescapes_only_whole_references() {
+        assert_eq!(unescape_ncr("caf&#233; &#xE9;&#Xe9;"), "caf\u{e9} \u{e9}\u{e9}");
+        assert_eq!(unescape_ncr("&#128512;"), "\u{1f600}");
+        for kept in ["a&b", "&#", "&#;", "&#x;", "&#12", "&#+65;", "&#55296;", "&#99999999999;", "&&#", "&#0;", "&#x0;"]
+        {
+            assert_eq!(unescape_ncr(kept), kept);
+        }
+        assert_eq!(unescape_ncr("&#&#65;"), "&#A");
+    }
 
     #[test]
     fn keeps_what_the_codepage_holds() {
@@ -432,13 +443,61 @@ pub(crate) fn decode_gml_string(bytes: &[u8]) -> Cow<'_, str> {
     }
 }
 
-/// `decode_gml_string`'s inverse, matching `Game::encode_str_lossy`.
-pub(crate) fn encode_gml_string(utf8: &str) -> Cow<'_, [u8]> {
+/// Text from outside the game in the game's encoding, with every character a GameMaker 8.0 game's
+/// codepage lacks written as a numeric character reference (`&#233;` for `é`) rather than `?`, so
+/// that `decode_gml_string_ncr` can give it back on the way out. encoding_rs's own `encode` does
+/// exactly this, as the web does for a form submitted in a legacy encoding.
+///
+/// The game sees the reference itself where the real runner would show `?`: a Shift-JIS game
+/// cannot hold `é` either way, and only this way does it survive the game passing it on.
+pub(crate) fn encode_gml_string_ncr(utf8: &str) -> Cow<'_, [u8]> {
     let (encoding, gm_version) = STRING_ENCODING.with(Cell::get);
     match gm_version {
-        Version::GameMaker8_0 => encode_lossy(encoding, utf8),
+        Version::GameMaker8_0 => encoding.encode(utf8).0,
         Version::GameMaker8_1 => Cow::from(utf8.as_bytes()),
     }
+}
+
+/// `encode_gml_string_ncr`'s inverse. A UTF-8 game never gets references, so its text is untouched.
+pub(crate) fn decode_gml_string_ncr(bytes: &[u8]) -> String {
+    let text = decode_gml_string(bytes);
+    match STRING_ENCODING.with(Cell::get).1 {
+        Version::GameMaker8_0 => unescape_ncr(&text).into_owned(),
+        Version::GameMaker8_1 => text.into_owned(),
+    }
+}
+
+/// `&#233;` and `&#xE9;` become `é`; anything that is not a whole reference stays as written.
+fn unescape_ncr(text: &str) -> Cow<'_, str> {
+    if !text.contains("&#") {
+        return Cow::Borrowed(text)
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find("&#") {
+        out.push_str(&rest[..at]);
+        let body = &rest[at + 2..];
+        let (radix, skip) = if body.starts_with(['x', 'X']) { (16, 1) } else { (10, 0) };
+        let digits = &body[skip..];
+        let len = digits.find(|c: char| !c.is_digit(radix)).unwrap_or(digits.len());
+        let character = (len > 0 && digits[len..].starts_with(';'))
+            .then(|| u32::from_str_radix(&digits[..len], radix).ok().and_then(char::from_u32))
+            .flatten()
+            // A NUL would end the string early wherever it is written with a terminator.
+            .filter(|&c| c != '\0');
+        match character {
+            Some(character) => {
+                out.push(character);
+                rest = &digits[len + 1..];
+            },
+            None => {
+                out.push_str("&#");
+                rest = body;
+            },
+        }
+    }
+    out.push_str(rest);
+    Cow::Owned(out)
 }
 
 impl Game {
