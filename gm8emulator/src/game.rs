@@ -432,6 +432,15 @@ pub(crate) fn decode_gml_string(bytes: &[u8]) -> Cow<'_, str> {
     }
 }
 
+/// `decode_gml_string`'s inverse, matching `Game::encode_str_lossy`.
+pub(crate) fn encode_gml_string(utf8: &str) -> Cow<'_, [u8]> {
+    let (encoding, gm_version) = STRING_ENCODING.with(Cell::get);
+    match gm_version {
+        Version::GameMaker8_0 => encode_lossy(encoding, utf8),
+        Version::GameMaker8_1 => Cow::from(utf8.as_bytes()),
+    }
+}
+
 impl Game {
     pub fn launch(
         assets: gm8exe::GameAssets,

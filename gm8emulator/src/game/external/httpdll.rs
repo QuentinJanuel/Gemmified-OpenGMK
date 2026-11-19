@@ -123,23 +123,34 @@ mod imp {
         ok(0.0)
     }
 
-    /// Appends the text and its terminator: writes go at the end, reads at the position.
     fn buffer_write_string(_: &mut Game, _: &mut Context, a: &[Value]) -> gml::Result<Value> {
-        let mut bytes = arg_raw(a.get(1));
-        bytes.push(0);
-        with(|s| s.buffers.get_mut(&arg_id(a.first())).map(|b| b.data.extend_from_slice(&bytes)));
+        write_string(arg_id(a.first()), &arg_raw(a.get(1)));
         ok(0.0)
     }
 
     fn buffer_read_string(_: &mut Game, _: &mut Context, a: &[Value]) -> gml::Result<Value> {
+        Ok(Value::Str(gml::String::from(read_string(arg_id(a.first())))))
+    }
+
+    /// Appends the text and its terminator: writes go at the end, reads at the position.
+    ///
+    /// Buffers hold UTF-8, which is what the host on the other end of a socket reads; the game's
+    /// own bytes are in its codepage (Shift-JIS, say, for a GameMaker 8.0 game).
+    fn write_string(id: i32, game_bytes: &[u8]) {
+        let mut bytes = crate::game::decode_gml_string(game_bytes).into_owned().into_bytes();
+        bytes.push(0);
+        with(|s| s.buffers.get_mut(&id).map(|b| b.data.extend_from_slice(&bytes)));
+    }
+
+    fn read_string(id: i32) -> Vec<u8> {
         let bytes = with(|s| {
-            let b = s.buffers.get_mut(&arg_id(a.first()))?;
+            let b = s.buffers.get_mut(&id)?;
             let start = b.pos.min(b.data.len());
             let end = b.data[start..].iter().position(|&c| c == 0).map_or(b.data.len(), |n| start + n);
             b.pos = (end + 1).min(b.data.len());
             Some(b.data[start..end].to_vec())
         });
-        Ok(Value::Str(gml::String::from(bytes.unwrap_or_default())))
+        crate::game::encode_gml_string(&String::from_utf8_lossy(&bytes.unwrap_or_default())).into_owned()
     }
 
     // -- sockets -------------------------------------------------------------------------------
@@ -313,6 +324,38 @@ mod imp {
     /// Dropped when a new game loads, so one game's ids never reach another's.
     pub fn reset() {
         with(|s| *s = State { next_id: 1, ..Default::default() });
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::game::{Version, set_string_encoding};
+
+        fn round_trip(encoding: &'static encoding_rs::Encoding, version: Version) {
+            set_string_encoding(encoding, version);
+            for text in ["\u{43f}\u{440}\u{438}\u{432}\u{435}\u{442}", "\u{65e5}\u{672c}\u{8a9e}", "hello", ""] {
+                let game_bytes = crate::game::encode_gml_string(text).into_owned();
+                let id = with(|s| {
+                    let id = next_id(s);
+                    s.buffers.insert(id, Buf::default());
+                    id
+                });
+                write_string(id, &game_bytes);
+                let wire = with(|s| s.buffers[&id].data.clone());
+                assert_eq!(wire, [text.as_bytes(), &[0]].concat(), "{text:?} on the wire");
+                assert_eq!(read_string(id), game_bytes, "{text:?} back in the game");
+            }
+        }
+
+        #[test]
+        fn strings_are_utf8_on_the_wire_for_a_shift_jis_game() {
+            round_trip(encoding_rs::SHIFT_JIS, Version::GameMaker8_0);
+        }
+
+        #[test]
+        fn strings_pass_through_for_a_utf8_game() {
+            round_trip(encoding_rs::UTF_8, Version::GameMaker8_1);
+        }
     }
 }
 
