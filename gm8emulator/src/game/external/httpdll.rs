@@ -135,9 +135,10 @@ mod imp {
     /// Appends the text and its terminator: writes go at the end, reads at the position.
     ///
     /// Buffers hold UTF-8, which is what the host on the other end of a socket reads; the game's
-    /// own bytes are in its codepage (Shift-JIS, say, for a GameMaker 8.0 game).
+    /// own bytes are in its codepage (Shift-JIS, say, for a GameMaker 8.0 game), with what that
+    /// codepage lacks as `&#NNN;` references (see `encode_gml_string_ncr`).
     fn write_string(id: i32, game_bytes: &[u8]) {
-        let mut bytes = crate::game::decode_gml_string(game_bytes).into_owned().into_bytes();
+        let mut bytes = crate::game::decode_gml_string_ncr(game_bytes).into_bytes();
         bytes.push(0);
         with(|s| s.buffers.get_mut(&id).map(|b| b.data.extend_from_slice(&bytes)));
     }
@@ -150,7 +151,7 @@ mod imp {
             b.pos = (end + 1).min(b.data.len());
             Some(b.data[start..end].to_vec())
         });
-        crate::game::encode_gml_string(&String::from_utf8_lossy(&bytes.unwrap_or_default())).into_owned()
+        crate::game::encode_gml_string_ncr(&String::from_utf8_lossy(&bytes.unwrap_or_default())).into_owned()
     }
 
     // -- sockets -------------------------------------------------------------------------------
@@ -333,8 +334,22 @@ mod imp {
 
         fn round_trip(encoding: &'static encoding_rs::Encoding, version: Version) {
             set_string_encoding(encoding, version);
-            for text in ["\u{43f}\u{440}\u{438}\u{432}\u{435}\u{442}", "\u{65e5}\u{672c}\u{8a9e}", "hello", ""] {
-                let game_bytes = crate::game::encode_gml_string(text).into_owned();
+            let texts = [
+                "\u{e9}",
+                "caf\u{e9}",
+                "\u{d55c}\u{ad6d}\u{c5b4}",
+                "\u{1f600}",
+                "\u{43f}\u{440}\u{438}\u{432}\u{435}\u{442}",
+                "\u{65e5}\u{672c}\u{8a9e}",
+                "hello",
+                "",
+                "a&b",
+                "&#",
+                "&#;&#x;&#12",
+            ];
+            for text in texts {
+                // What get_string hands the game for a player's typing, and buffer_read_string for a peer's.
+                let game_bytes = crate::game::encode_gml_string_ncr(text).into_owned();
                 let id = with(|s| {
                     let id = next_id(s);
                     s.buffers.insert(id, Buf::default());
@@ -350,11 +365,21 @@ mod imp {
         #[test]
         fn strings_are_utf8_on_the_wire_for_a_shift_jis_game() {
             round_trip(encoding_rs::SHIFT_JIS, Version::GameMaker8_0);
+            // Shift-JIS has no `é`: the game holds a reference, not a `?`.
+            assert_eq!(crate::game::encode_gml_string_ncr("caf\u{e9}").as_ref(), b"caf&#233;");
         }
 
         #[test]
         fn strings_pass_through_for_a_utf8_game() {
             round_trip(encoding_rs::UTF_8, Version::GameMaker8_1);
+            // Only a GameMaker 8.0 game is ever handed references, so a UTF-8 game's are its own text.
+            let id = with(|s| {
+                let id = next_id(s);
+                s.buffers.insert(id, Buf::default());
+                id
+            });
+            write_string(id, b"&#233;");
+            assert_eq!(with(|s| s.buffers[&id].data.clone()), b"&#233;\0");
         }
     }
 }
